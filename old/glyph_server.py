@@ -689,5 +689,6 @@ def exec_plan():
     return jsonify({"status": "executed", "results": results})
 
 # ---------------- START ----------------
+# File moved to old/glyph_server.py
 if __name__ == "__main__":
     app.run(port=5000)

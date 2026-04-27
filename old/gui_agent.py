@@ -552,4 +552,5 @@ if __name__ == '__main__':
     except: pass
     root = tk.Tk()
     app = AgentGUI(root)
+# File moved to old/gui_agent.py
     root.mainloop()
