@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Glyph Logs y Datos temporales
+logs.txt
+heartbeat_log.txt
