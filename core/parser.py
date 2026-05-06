@@ -31,15 +31,41 @@ def safe_parse(text: str, question: str = "") -> dict:
 
     data = None
     try:
+        # Intentar parsear el JSON tal cual
         data = json.loads(text)
     except:
-        # Búsqueda que acepta tanto objetos {} como listas []
+        # Búsqueda agresiva de bloques JSON { ... } o listas [ ... ]
         json_match = re.search(r'(\{.*\}|\[.*\])', text, re.DOTALL)
         if json_match:
             try:
                 data = json.loads(json_match.group(1))
             except:
-                pass
+                # Si falla el parseo pero hay llaves, intentamos una reparación básica
+                try:
+                    repaired = json_match.group(1)
+                    # Reemplazar comillas inteligentes y otros caracteres problemáticos
+                    repaired = repaired.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+                    data = json.loads(repaired)
+                except:
+                    pass
+        
+        # SI FALLA TODO: Intentamos extraer campos clave mediante Regex (Para modelos rebeldes como Gemma 4)
+        if not data:
+            data = {}
+            thought_m = re.search(r'["\']?thought["\']?\s*[:=]\s*["\'](.*?)["\'](?:\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
+            msg_m = re.search(r'["\']?message["\']?\s*[:=]\s*["\'](.*?)["\'](?:\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
+            steps_m = re.search(r'["\']?steps["\']?\s*[:=]\s*(\[.*?\])', text, re.DOTALL | re.IGNORECASE)
+            
+            if thought_m: data["thought"] = thought_m.group(1)
+            if msg_m: data["message"] = msg_m.group(1)
+            if steps_m:
+                try:
+                    data["steps"] = json.loads(steps_m.group(1).replace("'", '"'))
+                except:
+                    pass
+            
+            if not data: # Si ni siquiera con regex encontramos campos, no es un dict válido
+                data = None
 
     # Si el modelo devolvió una lista, tomamos el primer elemento
     if isinstance(data, list) and len(data) > 0:
