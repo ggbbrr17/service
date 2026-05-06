@@ -33,42 +33,44 @@ def safe_parse(text: str, question: str = "") -> dict:
 
     data = None
     try:
-        # Intentar parsear el JSON tal cual
-        data = json.loads(text)
+        # 2. Búsqueda agresiva de bloques JSON { ... } o listas [ ... ]
+        # Buscamos el ÚLTIMO bloque JSON (donde suele estar la respuesta real)
+        all_blocks = re.findall(r'(\{.*\}|\[.*\])', text, re.DOTALL)
+        if all_blocks:
+            for block in reversed(all_blocks):
+                try:
+                    data = json.loads(block)
+                    if data: break
+                except:
+                    # Intento de reparación básica
+                    try:
+                        repaired = block.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+                        data = json.loads(repaired)
+                        if data: break
+                    except:
+                        pass
     except:
-        # Búsqueda agresiva de bloques JSON { ... } o listas [ ... ]
-        json_match = re.search(r'(\{.*\}|\[.*\])', text, re.DOTALL)
-        if json_match:
-            try:
-                data = json.loads(json_match.group(1))
-            except:
-                # Si falla el parseo pero hay llaves, intentamos una reparación básica
-                try:
-                    repaired = json_match.group(1)
-                    # Reemplazar comillas inteligentes y otros caracteres problemáticos
-                    repaired = repaired.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
-                    data = json.loads(repaired)
-                except:
-                    pass
+        pass
+
+    # SI FALLA TODO: Intentamos extraer campos clave mediante Regex (Para modelos rebeldes como Gemma 4)
+    if not data:
+        data = {}
+        # Buscamos campos con o sin comillas, aceptando asteriscos de lista, pero solo al final de la respuesta
+        # Usamos [^`*] para no capturar los asteriscos de la siguiente línea
+        thought_m = re.findall(r'["\']?thought["\']?\s*[:=]\s*["\']?(.*?)["\']?(?:\n|\s*[,}]|\s*$)', text, re.IGNORECASE)
+        msg_m = re.findall(r'["\']?message["\']?\s*[:=]\s*["\']?(.*?)["\']?(?:\n|\s*[,}]|\s*$)', text, re.IGNORECASE)
+        steps_m = re.findall(r'["\']?steps["\']?\s*[:=]\s*(\[.*?\])', text, re.IGNORECASE)
         
-        # SI FALLA TODO: Intentamos extraer campos clave mediante Regex (Para modelos rebeldes como Gemma 4)
-        if not data:
-            data = {}
-            # Buscamos campos con o sin comillas, aceptando asteriscos de lista
-            thought_m = re.search(r'(?:[*•-]\s*)?["\']?thought["\']?\s*[:=]\s*["\']?(.*?)["\']?(?:\n|\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
-            msg_m = re.search(r'(?:[*•-]\s*)?["\']?message["\']?\s*[:=]\s*["\']?(.*?)["\']?(?:\n|\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
-            steps_m = re.search(r'(?:[*•-]\s*)?["\']?steps["\']?\s*[:=]\s*(\[.*?\])', text, re.DOTALL | re.IGNORECASE)
-            
-            if thought_m: data["thought"] = thought_m.group(1).strip()
-            if msg_m: data["message"] = msg_m.group(1).strip()
-            if steps_m:
-                try:
-                    data["steps"] = json.loads(steps_m.group(1).replace("'", '"'))
-                except:
-                    pass
-            
-            if not data or not (data.get("thought") or data.get("message")): 
-                data = None
+        if thought_m: data["thought"] = thought_m[-1].strip() # Tomamos el último hallazgo
+        if msg_m: data["message"] = msg_m[-1].strip()
+        if steps_m:
+            try:
+                data["steps"] = json.loads(steps_m[-1].replace("'", '"'))
+            except:
+                pass
+        
+        if not data or not (data.get("thought") or data.get("message")): 
+            data = None
 
     # Si el modelo devolvió una lista, tomamos el primer elemento
     if isinstance(data, list) and len(data) > 0:
