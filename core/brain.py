@@ -202,7 +202,7 @@ def ask_external_model(
             api_url,
             headers=headers,
             json=payload,
-            timeout=45
+            timeout=120
         )
         
         if response.status_code == 200:
