@@ -69,6 +69,7 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
         if results:
             target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
             api_key = os.getenv("GLYPH_GEMINI_API_KEY")
+            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
             
             # Contexto para el cierre
             results_str = json.dumps(results, indent=2)
@@ -81,7 +82,7 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
             try:
                 ext_res = ask_external_model(
                     completion_prompt, "", "Eres Glyph terminando una tarea.", 
-                    model_name=target, api_key=api_key, temperature=0.7
+                    model_name=target, api_key=api_key, api_url=api_url, temperature=0.7
                 )
                 final_plan = safe_parse(ext_res.get("text", ""))
                 final_msg = final_plan.get("message") or ext_res.get("text")
