@@ -83,14 +83,23 @@ def safe_parse(text: str, question: str = "") -> dict:
                data.get("saludo") or data.get("texto") or 
                data.get("response") or data.get("explicacion"))
         
-        # Limpiar pensamientos residuales dentro del mensaje (si el modelo los puso dentro del JSON)
+        # Limpiar pensamientos residuales dentro del mensaje
         if isinstance(msg_raw, str):
             msg_raw = re.sub(r'<(thought|thinking)>.*?</\1>', '', msg_raw, flags=re.DOTALL | re.IGNORECASE).strip()
         
         steps = data.get("steps", [])
 
-        # Si detectamos pasos pero la pregunta no parecía una orden, los movemos a sugerencias
+        # Detección de órdenes mucho más amplia
+        es_orden = re.search(r"\b(abre|busca|haz|pon|click|escribe|lee|ejecuta|dime|enciende|prende|crea|genera|investiga|analiza|diseña|programa|precio|cu[aá]nto|cu[aá]l|qu[eé]|btc|bitcoin|clima|añade|agrega|modifica|cambia|instala|borra|elimina|reinicia|para|detén|ayuda|dame|muestra|escribe|guarda|envía)\b", question.lower())
+        
+        # Si hay pasos, confiamos más en la IA, pero mantenemos una mínima validación
+        if steps and not es_orden:
+            # Si no detectamos la palabra clave pero hay acciones técnicas, permitimos si parece una instrucción
+            if len(question.split()) > 2: # Si la frase es larga, probablemente sea una instrucción
+                es_orden = True
+
         if steps and not es_orden and "update_heartbeat" not in str(steps):
+            print(f"🛡️ Seguridad: Pasos bloqueados porque la pregunta no parece una orden: '{question}'")
             return {"message": str(msg_raw), "steps": []}
 
         # Capturar si la IA envió el script en la raíz en lugar de en steps
