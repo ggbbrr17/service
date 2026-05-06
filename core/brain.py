@@ -1,3 +1,4 @@
+
 import requests
 import time
 import json
@@ -155,8 +156,18 @@ def ask_external_model(
         if "generateContent" in api_url:
             # Native Gemini Payload
             gemini_contents = []
-            system_instruction = {"parts": [{"text": system_prompt}]}
             
+            # 1. Incluir historial si existe
+            if history.strip():
+                # Intentamos parsear el historial (Gabriel: ... \n Glyph: ...)
+                lines = history.strip().split('\n')
+                for line in lines:
+                    if ':' in line:
+                        role_raw, text_raw = line.split(':', 1)
+                        role = "user" if "gabriel" in role_raw.lower() else "model"
+                        gemini_contents.append({"role": role, "parts": [{"text": text_raw.strip()}]})
+            
+            # 2. Mensaje actual
             user_parts = []
             for part in user_content:
                 if part["type"] == "text":
@@ -168,11 +179,11 @@ def ask_external_model(
             gemini_contents.append({"role": "user", "parts": user_parts})
             
             payload = {
-                "system_instruction": system_instruction,
+                "system_instruction": {"parts": [{"text": system_prompt + "\nRESPONDE SIEMPRE EN JSON."}]},
                 "contents": gemini_contents,
                 "generationConfig": {
                     "temperature": temperature,
-                    "maxOutputTokens": 400,
+                    "maxOutputTokens": 800,
                     "topP": 1,
                     "responseMimeType": "application/json"
                 }
