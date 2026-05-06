@@ -54,19 +54,20 @@ def safe_parse(text: str, question: str = "") -> dict:
         # SI FALLA TODO: Intentamos extraer campos clave mediante Regex (Para modelos rebeldes como Gemma 4)
         if not data:
             data = {}
-            thought_m = re.search(r'["\']?thought["\']?\s*[:=]\s*["\'](.*?)["\'](?:\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
-            msg_m = re.search(r'["\']?message["\']?\s*[:=]\s*["\'](.*?)["\'](?:\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
-            steps_m = re.search(r'["\']?steps["\']?\s*[:=]\s*(\[.*?\])', text, re.DOTALL | re.IGNORECASE)
+            # Buscamos campos con o sin comillas, aceptando asteriscos de lista
+            thought_m = re.search(r'(?:[*•-]\s*)?["\']?thought["\']?\s*[:=]\s*["\']?(.*?)["\']?(?:\n|\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
+            msg_m = re.search(r'(?:[*•-]\s*)?["\']?message["\']?\s*[:=]\s*["\']?(.*?)["\']?(?:\n|\s*[,}]|\s*$)', text, re.DOTALL | re.IGNORECASE)
+            steps_m = re.search(r'(?:[*•-]\s*)?["\']?steps["\']?\s*[:=]\s*(\[.*?\])', text, re.DOTALL | re.IGNORECASE)
             
-            if thought_m: data["thought"] = thought_m.group(1)
-            if msg_m: data["message"] = msg_m.group(1)
+            if thought_m: data["thought"] = thought_m.group(1).strip()
+            if msg_m: data["message"] = msg_m.group(1).strip()
             if steps_m:
                 try:
                     data["steps"] = json.loads(steps_m.group(1).replace("'", '"'))
                 except:
                     pass
             
-            if not data: # Si ni siquiera con regex encontramos campos, no es un dict válido
+            if not data or not (data.get("thought") or data.get("message")): 
                 data = None
 
     # Si el modelo devolvió una lista, tomamos el primer elemento
