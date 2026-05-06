@@ -25,6 +25,8 @@ def safe_parse(text: str, question: str = "") -> dict:
     if not text:
         return {}
 
+    print(f"\n[DEBUG] RAW AI RESPONSE:\n{text}\n")
+
     # 2. Limpieza para el parser JSON
     text = re.sub(r'<(thought|thinking)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r'^\s*\*.*?\n', '', text, flags=re.MULTILINE)
