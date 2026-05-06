@@ -189,9 +189,12 @@ def ask():
                 "results": [{"action": "tunnel_error", "ok": False, "msg": str(e)}]
             }), 502
 
+    history = data.get("history", "")
+    
     # --- MODO NUBE (Motor local en Render) ---
     res = run(
         question, dry_run=dry_run, 
+        history=history,
         image=image, video=video, audio=audio,
         is_user=True
     )
