@@ -192,12 +192,15 @@ def ask_external_model(
             
             # 2. Mensaje actual
             user_parts = []
-            for part in user_content:
-                if part["type"] == "text":
-                    user_parts.append({"text": part["text"]})
-                elif part["type"] == "image_url":
-                    b64_data = part["image_url"]["url"].split("base64,")[1]
-                    user_parts.append({"inline_data": {"mime_type": "image/jpeg", "data": b64_data}})
+            if current_mode == "default":
+                user_parts.append({"text": question})
+            else:
+                for part in user_content:
+                    if part["type"] == "text":
+                        user_parts.append({"text": part["text"]})
+                    elif part["type"] == "image_url":
+                        b64_data = part["image_url"]["url"].split("base64,")[1]
+                        user_parts.append({"inline_data": {"mime_type": "image/jpeg", "data": b64_data}})
             
             gemini_contents.append({"role": "user", "parts": user_parts})
             
