@@ -136,7 +136,7 @@ def run(
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
         clean_text = ""
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
-        if audio: target = "gemini-1.5-flash-latest" # Forzamos motor de audio nativo
+        if audio: target = "gemini-1.5-flash" # Forzamos motor de audio nativo
         
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
@@ -189,9 +189,8 @@ def run(
             
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": "Eres la Inteligencia Central de Glyph. Modo B (Conexión Directa). Sé inteligente, sistémico y eficiente. Evita preámbulos innecesarios o lenguaje de 'asistente AI' genérico. Responde directamente con sabiduría y precisión técnica."}]},
                 "generationConfig": {
-                    "temperature": 0.4, # Subimos un poco para recuperar la chispa de Gemma
+                    "temperature": 0.5, # Temperatura estándar para interacciones nativas
                     "maxOutputTokens": 800,
                     "candidateCount": 1
                 }
@@ -218,24 +217,8 @@ def run(
                     t = part.get("text", "")
                     if t: raw_response += t
                 
-                # --- LIMPIEZA AGRESIVA DE PENSAMIENTOS ---
-                lines = raw_response.split("\n")
-                filtered_lines = []
-                for line in lines:
-                    # Si la línea tiene sangría o palabras clave de razonamiento, la ignoramos
-                    stripped = line.strip()
-                    if not line.startswith(" ") and not line.startswith("\t"):
-                        if stripped and not any(k in stripped.lower() for k in ["context:", "option:", "user says:", "maintain the"]):
-                            filtered_lines.append(line)
-                
-                # Si el filtro vacía todo, tomamos la última línea que no esté vacía
-                if not filtered_lines and lines:
-                    clean_text = lines[-1].strip()
-                else:
-                    clean_text = "\n".join(filtered_lines).strip()
-                
-                clean_text = clean_text.replace("*", "").strip()
-                print(f"📡 [CERO ABSOLUTO] Respuesta Final (Limpia):\n{clean_text}")
+                clean_text = raw_response.strip()
+                print(f"📡 [CERO ABSOLUTO] Respuesta Final (Nativa):\n{clean_text}")
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
