@@ -48,38 +48,8 @@ def execute_step(step: dict, dry_run: bool = False):
             query = step.get("query")
             if not query: return False, "Falta la consulta para investigar."
             
-            # 1. TAVILY (Primario)
-            api_key = os.getenv("TAVILY_API_KEY") or "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"
-            if api_key:
-                try:
-                    res = requests.post("https://api.tavily.com/search", json={
-                        "api_key": api_key,
-                        "query": query,
-                        "search_depth": "advanced",
-                        "include_answer": True
-                    }, timeout=20)
-                    if res.ok:
-                        data = res.json()
-                        answer = data.get("answer")
-                        results = data.get("results", [])
-                        if answer:
-                            return True, f"🔍 DATO ACTUALIZADO: {answer}"
-                        info = "\n\n".join([f"Fuente: {r['url']}\nContenido: {r['content']}" for r in results[:5]])
-                        return True, f"🔍 INVESTIGACIÓN TAVILY:\n\n{info}"
-                except: pass
-
-            # 2. DUCKDUCKGO (Secundario)
-            try:
-                url = f"https://html.duckduckgo.com/html/?q={query}"
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Glyph/1.0"}
-                res = requests.get(url, headers=headers, timeout=15)
-                if res.ok:
-                    snippets = re.findall(r'result__snippet.*?>(.*?)</a>', res.text, re.DOTALL)
-                    clean_text = "\n\n• ".join([re.sub('<[^>]*>', '', s).strip() for s in snippets[:5]])
-                    return True, f"🔍 INVESTIGACIÓN DUCKDUCKGO:\n\n• {clean_text}"
-            except: pass
-
-            return False, f"No se pudo obtener información externa para '{query}'."
+            # Nota: La investigación ahora ocurre de forma nativa en el cerebro (Grounding)
+            return True, f"🔍 INVESTIGACIÓN NATIVA ACTIVADA: El núcleo está procesando datos de Google Search para: {query}"
 
         elif action == "read_file":
             path = step.get("path")

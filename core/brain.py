@@ -204,8 +204,8 @@ def ask_external_model(
             if system_prompt:
                 payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
                 
-            if use_google_search:
-                payload["tools"] = [{"googleSearch": {}}]
+            # HERRAMIENTA UNIFICADA: Google Search Grounding
+            payload["tools"] = [{"google_search": {}}]
         else:
             # OpenAI Compatibility Payload
             payload = {
