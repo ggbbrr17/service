@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: glyph-service
+    env: docker
+    repo: https://github.com/TU_USUARIO/glyph # Cambia esto por tu repo
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: GLYPH_TELEGRAM_TOKEN
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: GLYPH_ADMIN_CHAT_ID
+        sync: false
+      - key: GLYPH_GEMINI_API_KEY
+        sync: false
+    autoDeploy: true

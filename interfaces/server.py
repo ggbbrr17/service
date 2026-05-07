@@ -1,98 +1,117 @@
 from flask import Flask, request, jsonify, render_template_string
+from flask_cors import CORS
 import sys
 import os
+import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.engine import run
 
 app = Flask(__name__)
+CORS(app) # Permitir que a App Móvel acesse a API
 
-# ---------------- SAFETY / CONFIG ----------------
+# ---------------- CONFIG / AUTH ----------------
 WEB_PASSWORD = os.getenv("GLYPH_PASSWORD", "glyph123") # Cambia esto por seguridad
+HOME_PC_URL = os.getenv("GLYPH_HOME_URL", "") # URL de tu PC local (ej: de LocalTunnel)
 
-HTML_TEMPLATE = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Glyph Web Terminal</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { background: #000; color: #0f0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; }
-        #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-        .msg { padding: 10px; border-radius: 10px; max-width: 80%; word-wrap: break-word; }
-        .user { align-self: flex-end; background: #1a1a1a; color: #fff; border: 1px solid #333; }
-        .glyph { align-self: flex-start; background: #001a00; border: 1px solid #0f0; }
-        .input-area { background: #121212; padding: 20px; display: flex; gap: 10px; border-top: 1px solid #333; }
-        input { flex: 1; background: #000; border: 1px solid #0f0; color: #0f0; padding: 12px; border-radius: 25px; outline: none; }
-        button { background: #0f0; color: #000; border: none; padding: 10px 25px; border-radius: 25px; cursor: pointer; font-weight: bold; }
-        .info { font-size: 0.7em; color: #444; margin-top: 5px; }
-    </style>
-</head>
-<body>
-    <div id="chat"></div>
-    <div class="input-area">
-        <input type="text" id="userInput" placeholder="Comando para Glyph..." autofocus>
-        <button onclick="send()">ENVIAR</button>
-    </div>
-
-    <script>
-        const chat = document.getElementById('chat');
-        const input = document.getElementById('userInput');
-
-        async function send() {
-            const text = input.value.trim();
-            if (!text) return;
-            
-            appendMsg('user', text);
-            input.value = '';
-
-            try {
-                const res = await fetch('/ask', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({question: text, password: "''' + WEB_PASSWORD + '''"})
-                });
-                const data = await res.json();
-                appendMsg('glyph', data.message || data.response, data.token_pct, data.active_model);
-            } catch (e) {
-                appendMsg('glyph', 'Error: No se pudo conectar con el motor local.');
-            }
-        }
-
-        function appendMsg(type, text, tokens, model) {
-            const div = document.createElement('div');
-            div.className = 'msg ' + type;
-            div.innerHTML = `<div>${text}</div>`;
-            if (tokens !== undefined) {
-                div.innerHTML += `<div class="info">${model || 'IA'} | Consciencia: ${tokens}%</div>`;
-            }
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-        }
-
-        input.addEventListener('keypress', (e) => { if(e.key === 'Enter') send(); });
-    </script>
-</body>
-</html>
-'''
+def check_auth(request_data=None):
+    """Verifica la contraseña en los headers o en el body."""
+    # Primero revisamos el header (estándar para apps móviles)
+    auth_header = request.headers.get("X-Glyph-Secret")
+    if auth_header == WEB_PASSWORD:
+        return True
+    
+    # Fallback al body (para compatibilidad con la web terminal actual)
+    if request_data and request_data.get("password") == WEB_PASSWORD:
+        return True
+        
+    return False
 
 # ---------------- API ----------------
 @app.route("/", methods=["GET"])
-def index():
-    return render_template_string(HTML_TEMPLATE)
+@app.route("/health", methods=["GET"])
+@app.route("/api/v1/status", methods=["GET"])
+def health():
+    """Endpoint para verificar que el servidor y el motor están operativos."""
+    return jsonify({
+        "status": "online",
+        "entity": "Glyph Autonomous",
+        "version": "3.0.0-headless",
+        "tunnel_active": bool(HOME_PC_URL)
+    }), 200
 
 @app.route("/ask", methods=["POST"])
+@app.route("/api/v1/ask", methods=["POST"])
 def ask():
-    data = request.get_json(force=True)
-    
-    # Verificación de seguridad básica
-    if data.get("password") != WEB_PASSWORD and os.getenv("GLYPH_PASSWORD"):
+    try:
+        data = request.get_json(force=True)
+    except:
+        data = {}
+
+    # Verificación de seguridad
+    if not check_auth(data) and os.getenv("GLYPH_PASSWORD"):
         return jsonify({"message": "Acceso denegado. Contraseña incorrecta."}), 403
 
     question = data.get("question", "")
+    if not question:
+        return jsonify({"message": "La pregunta no puede estar vacía."}), 400
+        
     dry_run = bool(data.get("dry_run", False))
     
-    res = run(question, dry_run=dry_run)
+    # Extraer campos multimodales enviados desde la App
+    image = data.get("base64_image")
+    video = data.get("base64_video")
+    audio = data.get("base64_audio")
+    
+    print(f"📱 API Request: {question} (DryRun: {dry_run})")
+
+    # --- MODO TÚNEL (Redirección a PC Local) ---
+    if HOME_PC_URL:
+        try:
+            clean_url = HOME_PC_URL.rstrip('/')
+            # Reenviamos la petición a la PC de casa
+            r = requests.post(f"{clean_url}/ask", json=data, timeout=30)
+            return jsonify(r.json())
+        except Exception as e:
+            return jsonify({
+                "message": f"⚠️ Glyph Cloud: No pude contactar con tu PC local ({e}). Ejecutando en modo limitado...",
+                "results": [{"action": "tunnel_error", "ok": False, "msg": str(e)}]
+            }), 502
+
+    history = data.get("history", "")
+    
+    # --- MODO NUBE (Motor local en Render) ---
+    res = run(
+        question, dry_run=dry_run, 
+        history=history,
+        image=image, video=video, audio=audio,
+        is_user=True
+    )
+    
+    # Si el motor devuelve un error de conexión que en realidad es por falta de GUI
+    if "ERROR_CONNECTION" in str(res.get("message", "")) and dry_run is False:
+        # Opcional: Podrías añadir lógica aquí para notificar que la acción
+        # requiere el modo túnel (Home PC) activo.
+        pass
+        
     return jsonify(res)
+
+@app.route("/api/v1/notifications", methods=["GET"])
+def notifications():
+    """Consulta si hay mensajes pendientes de Glyph (asíncronos)."""
+    from core.memory import get_notifications
+    return jsonify({
+        "notifications": get_notifications(clear=True)
+    })
+
+@app.route("/api/v1/history", methods=["GET"])
+def history():
+    """Devuelve el historial de interacciones guardado en memoria."""
+    from core.memory import load_memory
+    mem = load_memory()
+    return jsonify({
+        "introspection": mem.get("introspection_history", []),
+        "learning": mem.get("reglas_aprendidas", [])
+    })
 
 # ---------------- START ----------------
 # File moved to old/glyph_server.py

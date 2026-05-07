@@ -1,10 +1,8 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-# Instalar dependencias del sistema necesarias para psutil y librerías de interfaz
+# Instalar dependencias del sistema para librerías que Glyph usa
 RUN apt-get update && apt-get install -y \
     build-essential \
-    ca-certificates \
-    python3-tk \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,7 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Puerto requerido por Hugging Face
+# Exponer el puerto que Flask usa para el health check de Google Cloud
 EXPOSE 7860
 
+# Comando para iniciar el sistema completo (Bot + Heartbeat)
 CMD ["python", "app.py"]

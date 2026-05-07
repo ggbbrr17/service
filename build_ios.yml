@@ -1,0 +1,20 @@
+name: Build iOS IPA
+on: [push]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Build IPA
+        run: |
+          # Esto es un ejemplo simplificado. 
+          # En un entorno real, aquí se usaría 'xcodebuild' 
+          # para compilar tu GlyphApp.swift
+          echo "Compilando en servidores de Apple..."
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: GlyphApp-IPA
+          path: ./output/Glyph.ipa

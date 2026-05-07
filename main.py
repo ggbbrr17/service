@@ -6,7 +6,7 @@ import tkinter as tk
 
 def main():
     parser = argparse.ArgumentParser(description="Glyph Assistant Launcher")
-    parser.add_argument("--mode", choices=["gui", "server", "cli"], default="gui")
+    parser.add_argument("--mode", choices=["gui", "server", "cli"], default="server")
     args = parser.parse_args()
 
     if args.mode == "gui":

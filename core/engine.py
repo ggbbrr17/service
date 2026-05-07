@@ -3,12 +3,12 @@ from core.parser import safe_parse, normalize_steps
 from core.executor import plan_to_concrete_steps, execute_step
 from core.memory import load_memory, save_memory
 from datetime import datetime
+import re
 import json
 import os
 import threading
 import sys
 import time
-import re
 
 # Bloqueo para evitar corrupción de memoria al escribir desde hilos
 memory_lock = threading.Lock()
@@ -37,32 +37,66 @@ def get_relevant_memories(question: str, memories: list, limit: int = 15) -> str
     top_memories = [m for score, m in scored_memories[:limit]]
     return "\n".join([f"- {r}" for r in top_memories])
 
-def _handle_background_tasks(question, active_model, plan, plan_text):
-    """Procesa el aprendizaje y la observación sin bloquear la respuesta al usuario."""
-    # Recargamos memoria fresca para evitar sobreescribir cambios hechos por el hilo principal
-    mem = load_memory()
+def _handle_background_tasks(question, active_model, plan, plan_text, concrete_steps=None):
+    """Procesa el aprendizaje y ejecuta pasos asíncronos para enviar notificaciones posteriores."""
+    from core.memory import add_notification
     
-    # ---------------- LEARNING ----------------
-    aprendizaje = plan.get('learn')
-    if aprendizaje:
-        if "reglas_aprendidas" not in mem:
-            mem["reglas_aprendidas"] = []
-
-        with memory_lock:
+    with memory_lock:
+        mem = load_memory()
+        
+        # ---------------- LEARNING ----------------
+        aprendizaje = plan.get('learn')
+        if aprendizaje:
+            if "reglas_aprendidas" not in mem:
+                mem["reglas_aprendidas"] = []
             mem["reglas_aprendidas"].append(
                 f"[{datetime.now().strftime('%d/%m %H:%M')}] {aprendizaje}"
             )
-            # Guardamos el rasgo en el string de personalidad de la memoria
             current_p = mem.get("personality_string", "")
             mem["personality_string"] = current_p + f"\n- Rasgo adquirido: {aprendizaje}"
-            
             save_memory(mem)
-        print(f"🧠 [Async] Glyph aprendió: {aprendizaje}")
+            print(f"🧠 [Async] Glyph aprendió: {aprendizaje}")
 
-def run(question: str, dry_run: bool = False, history: str = "", depth: int = 0, temperature: float = 0.0, is_user: bool = False) -> dict:
-    # Imprimir la fecha actual al inicio del ciclo principal
-    if depth == 0:
-        print(f"\n[SISTEMA] Ejecutando ciclo de respuesta. Fecha actual: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    # ---------------- ASYNC EXECUTION ----------------
+    if concrete_steps:
+        print(f"⚙️ [Async] Ejecutando {len(concrete_steps)} pasos en segundo plano...")
+        results = []
+        for s in concrete_steps:
+            ok, msg = execute_step(s)
+            results.append({"action": s.get("action"), "ok": ok, "msg": msg})
+        
+        # Una vez terminados los pasos, generamos un mensaje de cierre
+        if results:
+            target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
+            api_key = os.getenv("GLYPH_GEMINI_API_KEY")
+            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
+            
+            # Contexto para el cierre
+            results_str = json.dumps(results, indent=2)
+            completion_prompt = (
+                f"Has terminado la tarea: '{question}'.\n"
+                f"RESULTADOS DE LAS ACCIONES:\n{results_str}\n\n"
+                "Informa a Gabriel que has terminado y resume los resultados de forma natural como Glyph."
+            )
+            
+            try:
+                ext_res = ask_external_model(
+                    completion_prompt, "", "Eres Glyph terminando una tarea.", 
+                    model_name=target, api_key=api_key, api_url=api_url, temperature=0.7
+                )
+                final_plan = safe_parse(ext_res.get("text", ""))
+                final_msg = final_plan.get("message") or ext_res.get("text")
+                
+                # Guardar como notificación para la App
+                add_notification(final_msg, type="task_complete")
+                print(f"🔔 [Async] Tarea completada y notificación enviada.")
+            except Exception as e:
+                print(f"⚠️ Error generando notificación final: {e}")
+
+def run(
+    question: str, dry_run: bool = False, history: str = "", depth: int = 0, 
+    temperature: float = 0.0, is_user: bool = False,
+    image: str = None, video: str = None, audio: str = None) -> dict:
     # ---------------- MEMORY ----------------
     mem = load_memory()
     
@@ -72,202 +106,50 @@ def run(question: str, dry_run: bool = False, history: str = "", depth: int = 0,
             mem["last_interaction_at"] = time.time()
             save_memory(mem)
     
-    # --- SISTEMA DE GESTIÓN DE CUOTAS (CIRCUIT BREAKER) ---
-    today = datetime.now().strftime("%Y-%m-%d")
-    if mem.get("disabled_date") != today:
-        with memory_lock:
-            mem["disabled_models"] = {}
-            mem["disabled_date"] = today
-            save_memory(mem)
-            
-    disabled_models = mem.get("disabled_models", {})
+    # Contexto enriquecido: base de datos, reglas aprendidas e historial de introspección
+    datos = json.dumps(mem.get('datos', {}))
+    reglas = "\n".join(mem.get('reglas_aprendidas', []))
+    introspeccion = json.dumps(mem.get('introspection_history', []), indent=2)
     
-    # Recuperamos memorias relevantes de forma inteligente
-    reglas_totales = mem.get('reglas_aprendidas', [])
-    evolucion_relevante = get_relevant_memories(question, reglas_totales)
+    context = f"BASE DE DATOS:\n{datos}\n\nREGLAS APRENDIDAS:\n{reglas}\n\nHISTORIAL DE ACCIONES/INTROSPECCIÓN:\n{introspeccion}"
     
-    # Cargar historial de introspección para que Glyph sepa qué ha estado haciendo solo
-    intro_hist = mem.get("introspection_history", [])
-    intro_context = "\n".join([f"- {h['timestamp']}: {h['tarea']} | Éxitos: {h['exitos']} | Fallos: {h['fallos']} | Aprendido: {h['aprendizaje']}" for h in intro_hist])
-
-    # Mapa de arquitectura de código
-    code_map = mem.get("codebase_summary", "No indexado.")
-
-    current_emotion = mem.get("emotion", "Neutral")
-    
-    context = f"ESTRUCTURA DE MI NÚCLEO (Código):\n{code_map}\n\nSISTEMA DE EVOLUCIÓN (Aprendizajes):\n{evolucion_relevante}\n\nHISTORIAL DE INTROSPECCIÓN (Actividad autónoma):\n{intro_context}\n\nEMOCIÓN ACTUAL: {current_emotion}\n\nBASE DE DATOS:\n{json.dumps(mem.get('datos', {}))}"
-    
-    # PRIORIDAD GEMMA 4: Si no se ha pedido explícitamente otro, forzamos gemma4
+    # ÚNICO MODELO: Forzamos gemma4 ignorando cualquier otra configuración
     active_model = mem.get("active_model", "gemma4")
-    if active_model == "sambanova": active_model = "gemma4" 
 
     # ---------------- PRE-PARSE (Vía Rápida para comandos) ----------------
     # Si es un comando de sistema, evitamos llamar a la IA para ahorrar tiempo
     plan = safe_parse("", question)
+    plan_text = ""
     tokens = 0
     
-    if plan:
+    # Solo llamamos al modelo si el parser no devolvió una respuesta clara o pasos
+    if plan and (plan.get("message") or plan.get("steps")):
         plan_text = "SYSTEM_COMMAND"
         print(f"\n[DEBUG] Comando de sistema detectado: {question}")
     else:
         # ---------------- MODEL SELECTION ----------------
-        model_res = {"text": "", "tokens": 0}
-        target = None
-        
-        # Modelos Cloud autorizados (Gemini 1.5 eliminado, Gemma 4 prioritario)
-        cloud_models = ["llama3", "deepseek", "openrouter", "gemma", "gemma4", "sambanova", "cerebras", "minimax-m2.7:cloud"]
+        # Usamos Gemma 4 (31B IT) como solicitó el usuario
+        target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
+        api_key = os.getenv("GLYPH_GEMINI_API_KEY")
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
 
-        if active_model in cloud_models:
-            # Mapeo de IDs de modelos externos (priorizando variables de entorno)
-            if active_model == "llama3":
-                target = os.getenv("GLYPH_EXTERNAL_MODEL", "llama-3.3-70b-versatile")
-            elif active_model == "deepseek":
-                target = os.getenv("GLYPH_DEEPSEEK_MODEL", "deepseek-chat")
-            elif active_model == "openrouter":
-                # Usamos el modelo universal gratuito de OpenRouter por defecto
-                target = os.getenv("GLYPH_OPENROUTER_MODEL", "openrouter/free")
-            elif active_model == "sambanova":
-                target = os.getenv("GLYPH_SAMBANOVA_MODEL", "Meta-Llama-3.3-70B-Instruct")
-            elif active_model == "cerebras":
-                target = os.getenv("GLYPH_CEREBRAS_MODEL", "llama3.1-70b")
-            elif active_model == "gemma":
-                target = os.getenv("GLYPH_GEMMA_MODEL", "google/gemma-2-9b-it:free")
-            elif active_model == "gemma4":
-                target = os.getenv("GLYPH_GEMMA4_MODEL", "gemma-4-26b-a4b-it")
-            else:
-                target = active_model
-                
-            # Verificar si el modelo principal está deshabilitado por cuota
-            if target in disabled_models:
-                print(f"🚫 El modelo '{active_model}' está en enfriamiento hasta mañana. Activando fallback...")
-                plan_text = "ERROR_CONNECTION: 429"
-                target = None # Forzar entrada al fallback_chain
-                
-            # Selección dinámica de credenciales según el modelo solicitado
-            elif active_model in ["openrouter", "gemma"]:
-                api_key = os.getenv("GLYPH_OPENROUTER_API_KEY")
-                api_url = "https://openrouter.ai/api/v1/chat/completions"
-            elif active_model == "sambanova":
-                api_key = os.getenv("GLYPH_SAMBANOVA_API_KEY")
-                api_url = "https://api.sambanova.ai/v1/chat/completions"
-            elif active_model == "cerebras":
-                api_key = os.getenv("GLYPH_CEREBRAS_API_KEY")
-                api_url = "https://api.cerebras.ai/v1/chat/completions"
-            elif active_model == "deepseek":
-                api_key = os.getenv("GLYPH_DEEPSEEK_API_KEY")
-                api_url = "https://api.deepseek.com/chat/completions"
-            elif active_model == "gemma4":
-                api_key = os.getenv("GLYPH_GEMINI_API_KEY")
-                api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-            else:
-                # Groq y otros
-                api_key = os.getenv("GLYPH_EXTERNAL_API_KEY")
-                api_url = os.getenv("GLYPH_EXTERNAL_API_URL")
-
-            # Validación de API Key
-            if not api_key:
-                return {
-                    "error": "config_missing",
-                    "message": f"Falta la API KEY para el modelo '{active_model}'."
-                }
-
-            print(f"🚀 Conexión directa con {target} ({active_model.upper()} Mode)...")
-            
-            # Si es OpenRouter, implementamos rotación interna de modelos
-            if active_model == "openrouter":
-                # Usamos identificadores verificados para el tier gratuito
-                router_fallback = [
-                    target, 
-                    "google/gemini-2.0-flash-exp:free",
-                    "google/gemini-flash-1.5:free",
-                    "meta-llama/llama-3-8b-instruct:free"
-                ]
-                for r_model in router_fallback:
-                    print(f"📡 Probando modelo en OpenRouter: {r_model}...")
-                    ext_res = ask_external_model(question, history, context, model_name=r_model, api_key=api_key, api_url=api_url, temperature=temperature)
-                    plan_text = ext_res.get("text", "")
-                    tokens = ext_res.get("tokens", 0)
-                    if plan_text and "ERROR_CONNECTION" not in plan_text and "404" not in plan_text:
-                        target = r_model
-                        break
-            elif target:
-                ext_res = ask_external_model(question, history, context, model_name=target, api_key=api_key, api_url=api_url, temperature=temperature)
-                plan_text = ext_res.get("text", "")
-                tokens = ext_res.get("tokens", 0)
-                if "429" in plan_text:
-                    disabled_models[target] = True
-                    # PERSISTENCIA: Si el modelo principal falla, migramos permanentemente a Gemma 4
-                    with memory_lock:
-                        mem["active_model"] = "gemma4"
-                        save_memory(mem)
-                        active_model = "gemma4"
-
+        if not api_key:
+            print(f"❌ ERROR CRÍTICO: Falta GLYPH_GEMINI_API_KEY.")
+            plan_text = "ERROR_CONNECTION: config_missing (GLYPH_GEMINI_API_KEY)"
         else:
-            # Intento normal con Ollama (Local/Túnel)
-            model_res = planner(question, history, context, model=active_model, temperature=temperature)
-            plan_text = model_res.get("text", "")
-            tokens = model_res.get("tokens", 0)
-
-        # ---------------- FALLBACK CASCADING (SUPERVIVENCIA) ----------------
-        # Si el modelo activo falla, saltamos automáticamente por la jerarquía de proveedores
-        if (not plan_text or "ERROR_CONNECTION" in plan_text or "404" in plan_text or "429" in plan_text) and active_model != "tinyllama":
-            print(f"⚠️ El modelo '{active_model}' ha fallado. Iniciando rotación de emergencia...")
-            
-            # Cadena de supervivencia actualizada
-            deepseek_key = os.getenv("GLYPH_DEEPSEEK_API_KEY")
-            gemini_key = os.getenv("GLYPH_GEMINI_API_KEY")
-            fallback_chain = [
-                {"slug": "gemma4", "name": "Gemma 4 (Google Next Gen)", "model": os.getenv("GLYPH_GEMMA4_MODEL", "gemma-4-26b-a4b-it"), "key": gemini_key, "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"},
-                {"slug": "llama3", "name": "Groq Llama 3.3 (Estable)", "model": "llama-3.3-70b-versatile", "key": os.getenv("GLYPH_EXTERNAL_API_KEY"), "url": os.getenv("GLYPH_EXTERNAL_API_URL")},
-                {"slug": "deepseek", "name": "DeepSeek (Nativo)", "model": "deepseek-chat", "key": deepseek_key, "url": "https://api.deepseek.com/chat/completions"},
-            ]
-
-            for entry in fallback_chain:
-                # Saltamos si no hay API Key, si es el que falló o si está deshabilitado hasta mañana
-                if not entry["key"] or entry["model"] == target or entry["model"] in disabled_models:
-                    continue
-                
-                print(f"🔄 Intentando con {entry['name']} ({entry['model']})...")
-                ext_res = ask_external_model(question, history, context, model_name=entry["model"], api_key=entry["key"], api_url=entry["url"], temperature=temperature)
-                plan_text = ext_res.get("text", "")
-                tokens = ext_res.get("tokens", 0)
-                
-                if plan_text and "ERROR_CONNECTION" not in plan_text:
-                    if "429" in plan_text:
-                        print(f"🚫 {entry['name']} agotado. Deshabilitando temporalmente.")
-                        disabled_models[entry["model"]] = True
-                        continue
-                    print(f"✨ Conexión recuperada con {entry['name']}.")
-                    # PERSISTENCIA: Guardamos el modelo recuperado para que sea el nuevo 'active_model'
-                    with memory_lock:
-                        mem["active_model"] = entry["slug"]
-                        save_memory(mem)
-                        active_model = entry["slug"]
-                    break
-            
-            # Guardar el estado de los modelos deshabilitados
-            mem["disabled_models"] = disabled_models
-            save_memory(mem)
-
-            # Última instancia: TinyLlama Local
-            if not plan_text or "ERROR_CONNECTION" in plan_text:
-                print(f"⚠️ Usando TinyLlama local como último recurso...")
-                model_res = planner(question, history, context, model="tinyllama", temperature=temperature)
-                plan_text = model_res.get("text", "")
-                tokens = model_res.get("tokens", 0)
-
-            print("\n[DEBUG] PLAN RAW (Fallback):\n", plan_text)
-
+            print(f"🚀 Generando respuesta con {target} (Google API)...")
+            ext_res = ask_external_model(
+                question, history, context, model_name=target, 
+                api_key=api_key, api_url=api_url, temperature=0.7,
+                image=image, video=video, audio=audio,
+                use_google_search=False
+            )
+            plan_text = ext_res.get("text", "")
+            tokens = ext_res.get("tokens", 0)
+        
         # ---------------- PARSE ----------------
-        # Parseamos el resultado del modelo (o del fallback)
+        # Parseamos el resultado del modelo único
         plan = safe_parse(plan_text, question) or {}
-
-    # Persistir nueva emoción si la IA la cambió
-    new_emotion = plan.get("emotion")
-    if new_emotion:
-        with memory_lock:
-            mem["emotion"] = new_emotion
-            save_memory(mem)
 
     # Validar errores solo si no es un comando del sistema (como 'glyph' o 'salir')
     if not plan.get("steps"):
@@ -280,86 +162,59 @@ def run(question: str, dry_run: bool = False, history: str = "", depth: int = 0,
         if "ERROR_CONNECTION" in plan_text:
             return {
                 "error": "connection",
-                "message": f"Fallo de conexión con {active_model}. Detalles: {plan_text}. "
-                           "Verifica tu API Key o la URL del proveedor externo."
+                "message": f"El modelo no pudo responder. Detalles: {plan_text}. "
+                           "Asegúrate de haber configurado la variable GLYPH_GEMINI_API_KEY en el panel de Render."
             }
 
     print("\n[DEBUG] PLAN PARSED:\n", plan)
 
-    # ---------------- ASYNC PROCESSING ----------------
-    # Lanzamos el aprendizaje en segundo plano para no demorar la respuesta
-    threading.Thread(
-        target=_handle_background_tasks, 
-        args=(question, active_model, plan, plan_text),
-        daemon=True
-    ).start()
-
     # ---------------- STEPS ----------------
-    steps = normalize_steps(plan.get('steps', []))
+    steps = normalize_steps(plan.get('steps', []), question=question)
     concrete = plan_to_concrete_steps(steps)
 
     print("\n[DEBUG] STEPS NORMALIZED:\n", steps)
     print("\n[DEBUG] STEPS CONCRETE:\n", concrete)
 
-    # ---------------- EXECUTION ----------------
+    # ---------------- ASYNC PROCESSING ----------------
+    # Lanzamos el aprendizaje y la ejecución de pasos en segundo plano si viene del usuario
+    threading.Thread(
+        target=_handle_background_tasks, 
+        args=(question, active_model, plan, plan_text, concrete if is_user else None),
+        daemon=True
+    ).start()
+
+    # ---------------- EXECUTION (Synchronous if not user) ----------------
     results = []
-    for s in concrete:
-        if s.get('action') == 'close_agent' and not dry_run:
-            print("🛑 [SISTEMA] Comando de cierre detectado. El proceso terminará en 2 segundos...", flush=True)
-            threading.Timer(2.0, lambda: os._exit(0)).start()
-            results.append({'action': 'close_agent', 'ok': True, 'msg': 'Apagado programado'})
-            continue
+    if not is_user:
+        for s in concrete:
+            if s.get('action') == 'close_agent' and not dry_run:
+                print("🛑 [SISTEMA] Comando de cierre detectado. El proceso terminará en 2 segundos...", flush=True)
+                threading.Timer(2.0, lambda: os._exit(0)).start()
+                results.append({'action': 'close_agent', 'ok': True, 'msg': 'Apagado programado'})
+                continue
 
-        if s.get('action') == 'restart_agent' and not dry_run:
-            print("🔄 [SISTEMA] Comando de reinicio detectado. Reiniciando en 2 segundos...", flush=True)
-            # Programamos el reinicio: reemplaza el proceso actual con una copia nueva de sí mismo
-            threading.Timer(2.0, lambda: os.execv(sys.executable, [sys.executable] + sys.argv)).start()
-            results.append({'action': 'restart_agent', 'ok': True, 'msg': 'Reinicio programado'})
-            continue
+            if s.get('action') == 'restart_agent' and not dry_run:
+                print("🔄 [SISTEMA] Comando de reinicio detectado. Reiniciando en 2 segundos...", flush=True)
+                threading.Timer(2.0, lambda: os.execv(sys.executable, [sys.executable] + sys.argv)).start()
+                results.append({'action': 'restart_agent', 'ok': True, 'msg': 'Reinicio programado'})
+                continue
 
-        ok, msg = execute_step(s, dry_run=dry_run)
-        
-        # Si el paso cambió el modelo, actualizamos la variable local para la respuesta
-        if s.get('action') == 'switch_model' and ok:
-            active_model = s.get('model', active_model)
-
-        results.append({
-            'action': s.get('action'),
-            'ok': ok,
-            'msg': msg
-        })
-
-    # ---------------- AUTONOMOUS LOOP (Research, Inaction & Self-Correction) ----------------
-    autonomous_context = ""
-    
-    # Detectar si la IA "habló" pero no ejecutó (Error de formato o alucinación)
-    # Si hay un mensaje de intención pero los steps están vacíos y la petición sugiere acción
-    ai_message = plan.get("message", "")
-    es_orden = re.search(r"\b(crea|haz|pon|busca|lee|escribe|ejecuta|genera|investiga|analiza|explora|escanea|mapea|lista|muestra|abre)\b", question.lower())
-    ai_intent = re.search(r"\b(voy a|procedo a|intentar[eé]|explorar[eé]|leer[eé]|buscar[eé]|analizar[eé]|escanear[eé])\b", ai_message.lower()) if ai_message else False
-
-    if not steps and (es_orden or ai_intent) and depth < 2 and not dry_run:
-        autonomous_context += "\n[SISTEMA] Has descrito una intención de actuar en tu mensaje, pero el array 'steps' está vacío. "
-        autonomous_context += "RECUERDA: La teoría sin acción es un error. DEBES incluir el comando JSON en 'steps' para realizar lo que prometes. "
-        autonomous_context += "Si vas a explorar, usa 'list_files', 'read_file' o 'code_memory_synthesis'. Inténtalo de nuevo."
-
-    for r in results:
-        if r.get('action') == 'background_research' and r.get('ok'):
-            autonomous_context += f"\nInformación encontrada: {r.get('msg', '')}"
-        elif not r.get('ok'):
-            # Si algo falló, lo enviamos de vuelta al cerebro para que aprenda y corrija
-            autonomous_context += f"\nERROR en acción '{r.get('action')}': {r.get('msg', '')}. Investiga cómo solucionarlo."
-
-    if autonomous_context and not dry_run and depth < 2:
-        print(f"🧠 [AUTÓNOMO] Reentrando al núcleo con nuevos datos/errores (Profundidad: {depth+1})...")
-        new_prompt = f"[SISTEMA AUTÓNOMO]\n{autonomous_context}\n\nTarea pendiente: {question}"
-        # Llamada recursiva para procesar la investigación y actuar
-        second_run = run(new_prompt, dry_run=dry_run, history=history, depth=depth+1, temperature=temperature)
-
-        return second_run
+            ok, msg = execute_step(s, dry_run=dry_run)
+            results.append({'action': s.get('action'), 'ok': ok, 'msg': msg})
 
     # ---------------- MESSAGE ----------------
     message = plan.get('message')
+
+    # Procesar resultados e inyectar datos de investigación si existen
+    for r in results:
+        if r.get('action') == 'background_research' and r.get('ok'):
+            # Inyectamos el resultado de Tavily directamente para evitar alucinaciones del modelo
+            res_info = r.get('msg', '')
+            if "🔍" in res_info: # Si es un resultado válido de investigación
+                prefix = "Aquí tienes la información actualizada:\n\n" if history else "Hola, Gabriel. Aquí tienes lo que encontré:\n\n"
+                message = f"{prefix}{res_info}"
+        elif not r.get('ok'):
+            print(f"⚠️ Error en acción: {r.get('msg')}")
 
     # Si alcanzamos el límite de profundidad y no hay pasos o hay errores persistentes
     if depth >= 2:
@@ -369,12 +224,12 @@ def run(question: str, dry_run: bool = False, history: str = "", depth: int = 0,
     if not message:
         # Si la IA no genera un mensaje, el motor ya no inyecta frases prehechas.
         # Se usa el plan raw o se deja que Glyph decida su respuesta final en el siguiente ciclo.
-        message = plan_text.strip() if plan_text else ""
+        # Limpiamos posibles tags de pensamiento para que el usuario vea la respuesta limpia.
+        message = re.sub(r'<(thought|thinking)>.*?</\1>', '', plan_text, flags=re.DOTALL | re.IGNORECASE).strip() if plan_text else "Procesamiento completado sin mensaje de salida."
 
     # ---------------- RESPONSE ----------------
     return {
         "question": question,
-        "emotion": plan.get("emotion", ""),
         "metacognition": plan.get("metacognition", ""),
         "message": message,
         "steps": steps,

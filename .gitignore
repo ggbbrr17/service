@@ -1,26 +1,10 @@
-# Entornos virtuales (Esto es lo que más pesa y no se debe subir)
-venv/
-.venv/
-env/
-
-# Archivos de Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Configuración y secretos (¡NUNCA subas tu .env!)
+venv/
 .env
 
-# Datos y Memoria local
-memory.json
-*.log
-heartbeat_log.txt
+# Glyph Logs y Datos temporales
 logs.txt
-
-# Compilación (PyInstaller)
-build/
-dist/
-*.spec
-
-# SO
-.DS_Store
+heartbeat_log.txt

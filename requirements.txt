@@ -1,9 +1,6 @@
 flask
+flask-cors
 requests
-python-dotenv
-pandas
-psutil
 pymongo
 certifi
-urllib3
-gunicorn
+dnspython
