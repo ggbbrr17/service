@@ -120,13 +120,9 @@ def ask_external_model(
 
     # Selección de System Prompt según el modo
     if current_mode == "default":
-        system_prompt = (
-            "Eres Gemma 4, un asistente de IA de Google. "
-            "Responde de forma útil, educada y DIRECTA. "
-            "PROHIBICIÓN ESTRICTA: No incluyas razonamientos internos, ni notas sobre tu proceso de pensamiento, "
-            "ni puntos explicativos sobre cómo llegaste a la respuesta. "
-            "ENTREGA ÚNICAMENTE la respuesta final que el usuario vería en la interfaz de Google."
-        )
+        # MODO B: Cero instrucciones, cero reglas, cero personalidad. 
+        # Solo lo que la API de Google traiga por defecto.
+        system_prompt = ""
     else:
         # Definición estricta de herramientas (Solo Cerebro, Memoria e Investigación)
         valid_actions = "search, background_research, read_file, list_files, write_file, modify_file, analyze_dataset, update_heartbeat, code_memory_synthesis, neural_memory_synthesis, wait, close_agent, restart_agent, git_sync"

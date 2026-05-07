@@ -34,6 +34,14 @@ def heartbeat_loop():
     while True:
         try:
             mem = load_memory()
+            
+            # --- SUSPENSIÓN MODO B ---
+            current_mode = mem.get("datos", {}).get("system_mode", "sovereign")
+            if current_mode == "default":
+                log_heartbeat("Modo B detectado. Suspendiendo latidos y procesos autónomos.")
+                time.sleep(30) # Esperar 30 segundos y volver a comprobar
+                continue
+                
             config = mem.get("heartbeat_config", {})
             
             # Determinamos el tiempo de espera basado en la configuración de Glyph o defaults aleatorios
