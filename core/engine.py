@@ -187,17 +187,15 @@ def run(
             
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": "Eres el sistema central. Modo B activo. RESPUESTA CRUDA Y DIRECTA SOLAMENTE. PROHIBIDO: Pensar en voz alta, dar explicaciones, listar opciones o usar lenguaje conversacional de IA. Emite solo la respuesta final o el estado del sistema."}]},
+                "system_instruction": {"parts": [{"text": "Eres la Inteligencia Central de Glyph. Modo B (Conexión Directa). Sé inteligente, sistémico y eficiente. Evita preámbulos innecesarios o lenguaje de 'asistente AI' genérico. Responde directamente con sabiduría y precisión técnica."}]},
                 "generationConfig": {
-                    "temperature": 0.1, # Casi determinista para Modo B
-                    "maxOutputTokens": 512,
+                    "temperature": 0.4, # Subimos un poco para recuperar la chispa de Gemma
+                    "maxOutputTokens": 800,
                     "candidateCount": 1
                 }
             }
             
-            # INYECCIÓN DE SILENCIO DIRECTA (Más fuerte que system_instruction)
             if not has_files:
-                contents[-1]["parts"][0]["text"] += "\n\n(Responde solo como SISTEMA, sin pensar en voz alta ni dar opciones)."
                 payload["tools"] = [{"google_search": {}}]
 
             headers = {"x-goog-api-key": api_key}
