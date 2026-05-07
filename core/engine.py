@@ -132,9 +132,18 @@ def run(
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
         
         try:
-            # Payload minimalista nativo de Google (Sin envoltorios, sin scripts intermedios)
+            # Payload minimalista nativo de Google (Soporte Multimodal Directo)
+            user_parts = [{"text": question}]
+            if image:
+                user_parts.append({
+                    "inline_data": {
+                        "mime_type": "image/jpeg",
+                        "data": image
+                    }
+                })
+
             payload = {
-                "contents": [{"role": "user", "parts": [{"text": question}]}],
+                "contents": [{"role": "user", "parts": user_parts}],
                 "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024}
             }
             headers = {"x-goog-api-key": api_key}
@@ -143,9 +152,8 @@ def run(
             
             if response.status_code == 200:
                 data = response.json()
-                # Extracción directa del JSON de Google
                 clean_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                print(f"📡 [CERO ABSOLUTO] Respuesta cruda de Google Gemini: {clean_text[:100]}...")
+                print(f"📡 [CERO ABSOLUTO] Respuesta Completa de Google Gemini:\n{clean_text}")
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
