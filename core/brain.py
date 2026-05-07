@@ -106,6 +106,8 @@ def ask_external_model(
     mem = load_memory()
     if "datos" not in mem: mem["datos"] = {}
     current_mode = mem["datos"].get("system_mode", "sovereign")
+    
+    user_content = [] # Inicialización de seguridad
 
     # Detección de cambio de modo
     q_lower = question.lower().strip()
