@@ -145,10 +145,10 @@ def run(
                 data = response.json()
                 # Extracción directa del JSON de Google
                 clean_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                print(f"📡 [CERO ABSOLUTO] Respuesta cruda de Google Gemini: {clean_text[:100]}...")
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
-        except Exception as e:
-            clean_text = f"ERROR_CONNECTION_RAW: {e}"
+                print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
 
         return {
             "question": question,
