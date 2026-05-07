@@ -142,25 +142,28 @@ def ask_external_model(
         )
 
     # Construcción de contenido multimodal
-    user_content = [
-        {"type": "text", "text": f"Contexto: {context}\nHistorial: {history}\nPregunta: {question}"}
-    ]
+    # --- MODO B: Conexión Desnuda (Sin etiquetas, sin sistema) ---
+    if current_mode == "default":
+        # En Modo B, el user_content es SOLAMENTE la pregunta pura. Nada más.
+        messages = [{"role": "user", "content": question}]
+        system_prompt = None # Anulamos para el payload de abajo
+    else:
+        # Modo Soberano: Estructura completa de Glyph
+        user_content = [
+            {"type": "text", "text": f"Contexto: {context}\nHistorial: {history}\nPregunta: {question}"}
+        ]
 
-    # Inyectar archivos si existen (formato compatible con OpenAI/Gemini API)
-    if image:
-        user_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}})
-    
-    # Nota: El endpoint de compatibilidad OpenAI de Gemini soporta principalmente imágenes. 
-    # Para video/audio complejos, se recomienda usar la estructura de texto con referencia
-    if video:
-        user_content.append({"type": "text", "text": f"[Video Adjunto en Base64: {video[:50]}...]"})
-    if audio:
-        user_content.append({"type": "text", "text": f"[Audio Adjunto en Base64: {audio[:50]}...]"})
+        if image:
+            user_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}})
+        if video:
+            user_content.append({"type": "text", "text": f"[Video Adjunto en Base64: {video[:50]}...]"})
+        if audio:
+            user_content.append({"type": "text", "text": f"[Audio Adjunto en Base64: {audio[:50]}...]"})
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_content}
-    ]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ]
     try:
         headers = {}
         if api_key:
@@ -199,7 +202,6 @@ def ask_external_model(
             gemini_contents.append({"role": "user", "parts": user_parts})
             
             payload = {
-                "system_instruction": {"parts": [{"text": system_prompt}]},
                 "contents": gemini_contents,
                 "generationConfig": {
                     "temperature": temperature,
@@ -207,6 +209,10 @@ def ask_external_model(
                     "topP": 1
                 }
             }
+            # Solo añadir system_instruction si existe (Modo Soberano)
+            if system_prompt:
+                payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
+                
             if use_google_search:
                 payload["tools"] = [{"googleSearch": {}}]
         else:

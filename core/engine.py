@@ -145,9 +145,9 @@ def run(
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
         
-        # Llamada pura sin sistema ni personalidad
+        # Llamada pura sin sistema, ni personalidad, NI historial.
         ext_res = ask_external_model(
-            question, history, "", # Sin contexto de Glyph
+            question, "", "", # Sin historial ni contexto de Glyph
             model_name=target, api_key=api_key, api_url=api_url,
             temperature=0.7
         )
