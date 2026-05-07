@@ -113,43 +113,84 @@ def run(
     
     context = f"BASE DE DATOS:\n{datos}\n\nREGLAS APRENDIDAS:\n{reglas}\n\nHISTORIAL DE ACCIONES/INTROSPECCIÓN:\n{introspeccion}"
     
-    # ÚNICO MODELO: Forzamos gemma4 ignorando cualquier otra configuración
-    active_model = mem.get("active_model", "gemma4")
+    # ---------------- SYSTEM BYPASS (Modo B) ----------------
+    if "datos" not in mem: mem["datos"] = {}
+    current_mode = mem["datos"].get("system_mode", "sovereign")
 
-    # ---------------- PRE-PARSE (Vía Rápida para comandos) ----------------
-    # Si es un comando de sistema, evitamos llamar a la IA para ahorrar tiempo
-    plan = safe_parse("", question)
-    plan_text = ""
-    tokens = 0
-    
-    # Solo llamamos al modelo si el parser no devolvió una respuesta clara o pasos
-    if plan and (plan.get("message") or plan.get("steps")):
-        plan_text = "SYSTEM_COMMAND"
-        print(f"\n[DEBUG] Comando de sistema detectado: {question}")
-    else:
-        # ---------------- MODEL SELECTION ----------------
-        # Usamos Gemma 4 (31B IT) como solicitó el usuario
+    # Detección de comandos de sistema de nivel motor
+    q_clean = question.lower().strip()
+    if q_clean == "modo b":
+        with memory_lock:
+            mem["datos"]["system_mode"] = "default"
+            save_memory(mem)
+        return {
+            "message": "SISTEMA: Modo B activado. Conexión directa establecida. Entidad Glyph suspendida.",
+            "metacognition": "BYPASS_ACTIVE",
+            "active_model": "gemma-4-direct"
+        }
+    elif q_clean == "modo soberano":
+        with memory_lock:
+            mem["datos"]["system_mode"] = "sovereign"
+            save_memory(mem)
+        return {
+            "message": "SISTEMA: Modo Soberano restaurado. Entidad Glyph reestablecida.",
+            "metacognition": "RESTORING_SOVEREIGNTY",
+            "active_model": "gemma-4-sovereign"
+        }
+
+    # Si estamos en Modo B (Default), saltamos toda la arquitectura de Glyph
+    if current_mode == "default":
+        print(f"📡 [BYPASS] Enviando consulta directa a Google API (Modo B)...")
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
-
-        if not api_key:
-            print(f"❌ ERROR CRÍTICO: Falta GLYPH_GEMINI_API_KEY.")
-            plan_text = "ERROR_CONNECTION: config_missing (GLYPH_GEMINI_API_KEY)"
-        else:
-            print(f"🚀 Generando respuesta con {target} (Google API)...")
-            ext_res = ask_external_model(
-                question, history, context, model_name=target, 
-                api_key=api_key, api_url=api_url, temperature=0.7,
-                image=image, video=video, audio=audio,
-                use_google_search=False
-            )
-            plan_text = ext_res.get("text", "")
-            tokens = ext_res.get("tokens", 0)
         
-        # ---------------- PARSE ----------------
-        # Parseamos el resultado del modelo único
-        plan = safe_parse(plan_text, question) or {}
+        # Llamada pura sin sistema ni personalidad
+        ext_res = ask_external_model(
+            question, history, "", # Sin contexto de Glyph
+            model_name=target, api_key=api_key, api_url=api_url,
+            temperature=0.7
+        )
+        
+        raw_text = ext_res.get("text", "Error en conexión directa.")
+        
+        # Limpieza agresiva de pensamientos internos/razonamiento para Modo B
+        clean_text = re.sub(r'(?i)\*.*?(User|Input|Context|System|Goal|Thinking).*?\n', '', raw_text)
+        clean_text = re.sub(r'<(thought|thinking)>.*?</\1>', '', clean_text, flags=re.DOTALL | re.IGNORECASE)
+        clean_text = clean_text.split("---")[-1].strip() # Tomar solo la parte final si hay separadores
+        
+        return {
+            "question": question,
+            "message": clean_text if clean_text else raw_text,
+            "active_model": "gemma-4-pure"
+        }
+
+    # ---------------- NORMAL GLYPH LOGIC ----------------
+    # (El resto del código solo se ejecuta si NO estamos en Modo B)
+    active_model = mem.get("active_model", "gemma4")
+    
+    # ÚNICO MODELO: Forzamos gemma4 ignorando cualquier otra configuración
+    target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
+    api_key = os.getenv("GLYPH_GEMINI_API_KEY")
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
+
+    if not api_key:
+        print(f"❌ ERROR CRÍTICO: Falta GLYPH_GEMINI_API_KEY.")
+        plan_text = "ERROR_CONNECTION: config_missing (GLYPH_GEMINI_API_KEY)"
+    else:
+        print(f"🚀 Generando respuesta con {target} (Google API)...")
+        ext_res = ask_external_model(
+            question, history, context, model_name=target, 
+            api_key=api_key, api_url=api_url, temperature=0.7,
+            image=image, video=video, audio=audio,
+            use_google_search=False
+        )
+        plan_text = ext_res.get("text", "")
+        tokens = ext_res.get("tokens", 0)
+    
+    # ---------------- PARSE ----------------
+    # Parseamos el resultado del modelo único
+    plan = safe_parse(plan_text, question) or {}
 
     # Validar errores solo si no es un comando del sistema (como 'glyph' o 'salir')
     if not plan.get("steps"):
