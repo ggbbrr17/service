@@ -159,11 +159,11 @@ def run(
                 "message": "El modelo no devolvió respuesta"
             }
 
-        if "ERROR_CONNECTION" in plan_text:
+        if plan_text.startswith("ERROR_CONNECTION") or plan_text.strip() == "ERROR_CONNECTION":
             return {
                 "error": "connection",
                 "message": f"El modelo no pudo responder. Detalles: {plan_text}. "
-                           "Asegúrate de haber configurado la variable GLYPH_GEMINI_API_KEY en el panel de Render."
+                           "Asegúrate de haber configurado la variable GLYPH_GEMINI_API_KEY."
             }
 
     print("\n[DEBUG] PLAN PARSED:\n", plan)
