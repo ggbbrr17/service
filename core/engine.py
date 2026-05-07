@@ -178,30 +178,40 @@ def run(
             else:
                 contents.append({"role": "user", "parts": user_parts})
 
+            # ESTRATEGIA RESILIENTE: Si hay archivos, la búsqueda nativa puede causar error 500 en Google.
+            # Solo activamos búsqueda si no hay archivos pesados o si es una pregunta de texto puro.
+            has_files = image is not None or audio is not None
+            
             payload = {
                 "contents": contents,
-                "tools": [{"google_search": {}}], # Nombre de herramienta corregido
                 "generationConfig": {
-                    "temperature": 0.3, # Mayor precisión para datos reales
+                    "temperature": 0.2, # Más bajo para evitar alucinaciones
                     "maxOutputTokens": 1024,
                     "candidateCount": 1
                 }
             }
+            
+            if not has_files:
+                payload["tools"] = [{"google_search": {}}]
+
             headers = {"x-goog-api-key": api_key}
             
             response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
             
+            # FALLBACK DE SEGURIDAD: Si falla con error 500, reintentamos sin herramientas
+            if response.status_code == 500 and not has_files:
+                print("⚠️ [CERO ABSOLUTO] Detectado Error 500. Reintentando sin búsqueda nativa...")
+                payload.pop("tools", None)
+                response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
+
             if response.status_code == 200:
                 data = response.json()
-                # ERRADICACIÓN DE RAÍZ: Filtramos todas las partes para ignorar pensamientos
                 all_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                 
                 clean_text = ""
-                text_content = ""
                 for part in all_parts:
-                    text_content = part.get("text", "")
-                    if text_content:
-                        clean_text = text_content 
+                    t = part.get("text", "")
+                    if t: clean_text += t
                 
                 clean_text = clean_text.replace("*", "").strip()
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Limpia):\n{clean_text}")
