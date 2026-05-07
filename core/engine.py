@@ -189,6 +189,7 @@ def run(
             
             payload = {
                 "contents": contents,
+                "system_instruction": {"parts": [{"text": "Responde SIEMPRE en español. Ve directo a la respuesta sin mostrar procesos de pensamiento, ni análisis internos, ni texto en inglés. No repitas la pregunta del usuario. Responde de forma natural. Utiliza el guion '-' en lugar del asterisco '*' para formatear listas y viñetas."}]},
                 "generationConfig": {
                     "temperature": 0.5, # Temperatura estándar para interacciones nativas
                     "maxOutputTokens": 800,
@@ -217,7 +218,16 @@ def run(
                     t = part.get("text", "")
                     if t: raw_response += t
                 
-                clean_text = raw_response.strip()
+                clean_text = raw_response.strip().replace("*", "-")
+                
+                # Filtro de emergencia por si el modelo filtra su pensamiento en inglés
+                if "analyze the image" in clean_text.lower() or "formulate the response" in clean_text.lower():
+                    # Intentamos extraer solo la parte en español (usualmente al final o después de los pasos)
+                    lines = clean_text.split('\n')
+                    spanish_lines = [l for l in lines if l.strip() and not l.strip().lower().startswith(('1.', '2.', '3.', '4.', '5.', '-analyze', '-evaluate', '-formulate', '-consider', 'the user is asking'))]
+                    if spanish_lines:
+                        clean_text = "\n".join(spanish_lines).strip()
+                
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Nativa):\n{clean_text}")
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
