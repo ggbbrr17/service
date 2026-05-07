@@ -158,7 +158,10 @@ def run(
                         text = line.replace("GLYPH:", "").replace("ASSISTANT:", "").strip()
                     
                     if role and text:
-                        # Si el rol es el mismo que el anterior, fusionamos el texto
+                        # REGLA DE ORO: El primer mensaje DEBE ser 'user'
+                        if not contents and role == "model":
+                            continue # Ignoramos si el historial empieza con el modelo
+                            
                         if role == last_role:
                             contents[-1]["parts"][0]["text"] += f"\n{text}"
                         else:
