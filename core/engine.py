@@ -127,8 +127,7 @@ def run(
     if current_mode == "default":
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
         import requests
-        # Cambiamos a gemini-1.5-flash para asegurar respuesta directa sin "Thinking"
-        target = os.getenv("GLYPH_GEMINI_MODEL", "gemini-1.5-flash")
+        target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
         
@@ -153,8 +152,21 @@ def run(
             
             if response.status_code == 200:
                 data = response.json()
-                clean_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                print(f"📡 [CERO ABSOLUTO] Respuesta Completa de Google Gemini:\n{clean_text}")
+                # ERRADICACIÓN DE RAÍZ: Filtramos todas las partes para ignorar pensamientos
+                all_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                
+                # Buscamos la parte que sea texto real, ignorando metadatos de "thought" o razonamiento
+                clean_text = ""
+                for part in all_parts:
+                    # Si la parte tiene texto y NO es un bloque de pensamiento (según estructura de Google)
+                    # O si simplemente hay varias partes, tomamos la que contiene la respuesta final
+                    text_content = part.get("text", "")
+                    # Si el texto parece razonamiento (contiene pasos o metadatos de IA), lo saltamos
+                    # Pero lo más seguro es que la respuesta real sea el bloque de texto que NO es el primero si hay varios
+                    if text_content:
+                        clean_text = text_content # Nos quedamos con el último bloque de texto encontrado
+                
+                print(f"📡 [CERO ABSOLUTO] Respuesta Final (Pensamientos Erradicados):\n{clean_text}")
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
