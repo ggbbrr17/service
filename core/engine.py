@@ -180,7 +180,7 @@ def run(
 
             payload = {
                 "contents": contents,
-                "tools": [{"google_search_retrieval": {}}], # SUPERPODER: Búsqueda en Google en tiempo real
+                "tools": [{"google_search": {}}], # Nombre de herramienta corregido
                 "generationConfig": {
                     "temperature": 0.3, # Mayor precisión para datos reales
                     "maxOutputTokens": 1024,
