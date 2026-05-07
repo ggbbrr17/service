@@ -143,23 +143,40 @@ def run(
             # MEMORIA EN CERO ABSOLUTO: Construimos el historial nativo para Google
             contents = []
             
-            # 1. Procesar el historial previo (si existe)
+            # 1. Procesar el historial previo con alternancia obligatoria de roles
             if history:
                 lines = history.split("\n")
+                last_role = None
                 for line in lines:
+                    role = None
+                    text = ""
                     if line.startswith("USER:"):
-                        contents.append({"role": "user", "parts": [{"text": line.replace("USER:", "").strip()}]})
+                        role = "user"
+                        text = line.replace("USER:", "").strip()
                     elif line.startswith("GLYPH:") or line.startswith("ASSISTANT:"):
-                        contents.append({"role": "model", "parts": [{"text": line.replace("GLYPH:", "").replace("ASSISTANT:", "").strip()}]})
+                        role = "model"
+                        text = line.replace("GLYPH:", "").replace("ASSISTANT:", "").strip()
+                    
+                    if role and text:
+                        # Si el rol es el mismo que el anterior, fusionamos el texto
+                        if role == last_role:
+                            contents[-1]["parts"][0]["text"] += f"\n{text}"
+                        else:
+                            contents.append({"role": role, "parts": [{"text": text}]})
+                            last_role = role
 
-            # 2. Añadir el mensaje actual con sus archivos adjuntos
+            # 2. Añadir el mensaje actual (Asegurando alternancia)
             user_parts = [{"text": question}]
             if image:
                 user_parts.append({"inline_data": {"mime_type": "image/jpeg", "data": image}})
             if audio:
                 user_parts.append({"inline_data": {"mime_type": "audio/mpeg", "data": audio}})
             
-            contents.append({"role": "user", "parts": user_parts})
+            # Si el último mensaje del historial también fue 'user', lo fusionamos
+            if contents and contents[-1]["role"] == "user":
+                contents[-1]["parts"].extend(user_parts)
+            else:
+                contents.append({"role": "user", "parts": user_parts})
 
             payload = {
                 "contents": contents,
@@ -171,7 +188,6 @@ def run(
             }
             headers = {"x-goog-api-key": api_key}
             
-            # Usamos la sesión global (bypass_session)
             response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
             
             if response.status_code == 200:
@@ -179,21 +195,19 @@ def run(
                 # ERRADICACIÓN DE RAÍZ: Filtramos todas las partes para ignorar pensamientos
                 all_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                 
-                # Buscamos la parte que sea texto real, ignorando metadatos de "thought" o razonamiento
                 clean_text = ""
-                text_content = "" # Declaración preventiva para el linter
+                text_content = ""
                 for part in all_parts:
                     text_content = part.get("text", "")
                     if text_content:
                         clean_text = text_content 
                 
-                # LIMPIEZA FINAL: Eliminamos asteriscos (*) del mensaje
                 clean_text = clean_text.replace("*", "").strip()
-                
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Limpia):\n{clean_text}")
             else:
-                clean_text = f"ERROR_DIRECT_API: {response.status_code}"
+                clean_text = f"ERROR_DIRECT_API: {response.status_code}\nDetalle: {response.text}"
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
+                print(f"📄 Detalle del error: {response.text}")
         except Exception as e:
             clean_text = f"ERROR_CONNECTION_RAW: {e}"
             print(f"⚠️ [CERO ABSOLUTO] Error de conexión: {e}")
