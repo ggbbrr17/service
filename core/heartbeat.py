@@ -35,11 +35,10 @@ def heartbeat_loop():
         try:
             mem = load_memory()
             
-            # --- SUSPENSIÓN MODO B ---
+            # --- SUSPENSIÓN MODO B (Silencio Absoluto) ---
             current_mode = mem.get("datos", {}).get("system_mode", "sovereign")
             if current_mode == "default":
-                log_heartbeat("Modo B detectado. Suspendiendo latidos y procesos autónomos.")
-                time.sleep(30) # Esperar 30 segundos y volver a comprobar
+                time.sleep(60) # Esperar un minuto en silencio total
                 continue
                 
             config = mem.get("heartbeat_config", {})

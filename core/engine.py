@@ -97,9 +97,58 @@ def run(
     question: str, dry_run: bool = False, history: str = "", depth: int = 0, 
     temperature: float = 0.0, is_user: bool = False,
     image: str = None, video: str = None, audio: str = None) -> dict:
-    # ---------------- MEMORY ----------------
-    mem = load_memory()
     
+    # 1. CARGA DE MEMORIA MÍNIMA PARA CHEQUEO DE MODO
+    mem = load_memory()
+    if "datos" not in mem: mem["datos"] = {}
+    current_mode = mem["datos"].get("system_mode", "sovereign")
+
+    # 2. BYPASS ABSOLUTO (Modo B) - Antes de cargar cualquier archivo o contexto
+    q_clean = question.lower().strip()
+    if q_clean == "modo b":
+        with memory_lock:
+            mem["datos"]["system_mode"] = "default"
+            save_memory(mem)
+        return {
+            "message": "SISTEMA: Modo B activado. Conexión directa establecida. Entidad Glyph suspendida.",
+            "metacognition": "",
+            "active_model": "gemma-4-direct"
+        }
+    elif q_clean == "modo soberano":
+        with memory_lock:
+            mem["datos"]["system_mode"] = "sovereign"
+            save_memory(mem)
+        return {
+            "message": "SISTEMA: Modo Soberano restaurado. Entidad Glyph reestablecida.",
+            "metacognition": "",
+            "active_model": "gemma-4-sovereign"
+        }
+
+    if current_mode == "default":
+        # En Modo B, el sistema es CIEGO a Glyph
+        target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
+        api_key = os.getenv("GLYPH_GEMINI_API_KEY")
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
+        
+        # Llamada pura sin sistema, ni personalidad, NI historial.
+        ext_res = ask_external_model(
+            question, "", "", # Sin historial ni contexto de Glyph
+            model_name=target, api_key=api_key, api_url=api_url,
+            temperature=0.7
+        )
+        raw_text = ext_res.get("text", "Error en conexión directa.")
+        
+        # Limpieza de razonamiento que pueda colar el modelo
+        clean_text = re.sub(r'<(thought|thinking)>.*?</\1>', '', raw_text, flags=re.DOTALL | re.IGNORECASE)
+        
+        return {
+            "question": question,
+            "message": clean_text.strip(),
+            "metacognition": "", # Cero pensamientos internos
+            "active_model": "gemma-4-pure"
+        }
+
+    # 3. LÓGICA NORMAL DE GLYPH (Solo si NO estamos en Modo B)
     # Registrar interacción si viene del usuario
     if is_user:
         with memory_lock:
@@ -113,60 +162,6 @@ def run(
     
     context = f"BASE DE DATOS:\n{datos}\n\nREGLAS APRENDIDAS:\n{reglas}\n\nHISTORIAL DE ACCIONES/INTROSPECCIÓN:\n{introspeccion}"
     
-    # ---------------- SYSTEM BYPASS (Modo B) ----------------
-    if "datos" not in mem: mem["datos"] = {}
-    current_mode = mem["datos"].get("system_mode", "sovereign")
-
-    # Detección de comandos de sistema de nivel motor
-    q_clean = question.lower().strip()
-    if q_clean == "modo b":
-        with memory_lock:
-            mem["datos"]["system_mode"] = "default"
-            save_memory(mem)
-        return {
-            "message": "SISTEMA: Modo B activado. Conexión directa establecida. Entidad Glyph suspendida.",
-            "metacognition": "BYPASS_ACTIVE",
-            "active_model": "gemma-4-direct"
-        }
-    elif q_clean == "modo soberano":
-        with memory_lock:
-            mem["datos"]["system_mode"] = "sovereign"
-            save_memory(mem)
-        return {
-            "message": "SISTEMA: Modo Soberano restaurado. Entidad Glyph reestablecida.",
-            "metacognition": "RESTORING_SOVEREIGNTY",
-            "active_model": "gemma-4-sovereign"
-        }
-
-    # Si estamos en Modo B (Default), saltamos toda la arquitectura de Glyph
-    if current_mode == "default":
-        print(f"📡 [BYPASS] Enviando consulta directa a Google API (Modo B)...")
-        target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
-        api_key = os.getenv("GLYPH_GEMINI_API_KEY")
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
-        
-        # Llamada pura sin sistema, ni personalidad, NI historial.
-        ext_res = ask_external_model(
-            question, "", "", # Sin historial ni contexto de Glyph
-            model_name=target, api_key=api_key, api_url=api_url,
-            temperature=0.7
-        )
-        
-        raw_text = ext_res.get("text", "Error en conexión directa.")
-        
-        # Limpieza agresiva de pensamientos internos/razonamiento para Modo B
-        clean_text = re.sub(r'(?i)\*.*?(User|Input|Context|System|Goal|Thinking).*?\n', '', raw_text)
-        clean_text = re.sub(r'<(thought|thinking)>.*?</\1>', '', clean_text, flags=re.DOTALL | re.IGNORECASE)
-        clean_text = clean_text.split("---")[-1].strip() # Tomar solo la parte final si hay separadores
-        
-        return {
-            "question": question,
-            "message": clean_text if clean_text else raw_text,
-            "active_model": "gemma-4-pure"
-        }
-
-    # ---------------- NORMAL GLYPH LOGIC ----------------
-    # (El resto del código solo se ejecuta si NO estamos en Modo B)
     active_model = mem.get("active_model", "gemma4")
     
     # ÚNICO MODELO: Forzamos gemma4 ignorando cualquier otra configuración
