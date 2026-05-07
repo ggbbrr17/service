@@ -187,9 +187,10 @@ def run(
             
             payload = {
                 "contents": contents,
+                "system_instruction": {"parts": [{"text": "Eres el sistema central. Modo B activo. RESPUESTA CRUDA Y DIRECTA SOLAMENTE. PROHIBIDO: Pensar en voz alta, dar explicaciones, listar opciones o usar lenguaje conversacional de IA. Emite solo la respuesta final o el estado del sistema."}]},
                 "generationConfig": {
-                    "temperature": 0.2, # Más bajo para evitar alucinaciones
-                    "maxOutputTokens": 1024,
+                    "temperature": 0.1, # Casi determinista para Modo B
+                    "maxOutputTokens": 512,
                     "candidateCount": 1
                 }
             }
