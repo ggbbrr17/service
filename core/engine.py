@@ -165,15 +165,14 @@ def run(
                 # Buscamos la parte que sea texto real, ignorando metadatos de "thought" o razonamiento
                 clean_text = ""
                 for part in all_parts:
-                    # Si la parte tiene texto y NO es un bloque de pensamiento (según estructura de Google)
-                    # O si simplemente hay varias partes, tomamos la que contiene la respuesta final
                     text_content = part.get("text", "")
-                    # Si el texto parece razonamiento (contiene pasos o metadatos de IA), lo saltamos
-                    # Pero lo más seguro es que la respuesta real sea el bloque de texto que NO es el primero si hay varios
                     if text_content:
-                        clean_text = text_content # Nos quedamos con el último bloque de texto encontrado
+                        clean_text = text_content 
                 
-                print(f"📡 [CERO ABSOLUTO] Respuesta Final (Pensamientos Erradicados):\n{clean_text}")
+                # LIMPIEZA FINAL: Eliminamos asteriscos (*) del mensaje
+                clean_text = clean_text.replace("*", "").strip()
+                
+                print(f"📡 [CERO ABSOLUTO] Respuesta Final (Limpia):\n{clean_text}")
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
