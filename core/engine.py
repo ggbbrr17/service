@@ -149,6 +149,9 @@ def run(
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
+        except Exception as e:
+            clean_text = f"ERROR_CONNECTION_RAW: {e}"
+            print(f"⚠️ [CERO ABSOLUTO] Error de conexión: {e}")
 
         return {
             "question": question,
