@@ -140,34 +140,38 @@ def run(
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
         
         try:
-            # Payload minimalista nativo de Google (Soporte Multimodal Directo)
+            # MEMORIA EN CERO ABSOLUTO: Construimos el historial nativo para Google
+            contents = []
+            
+            # 1. Procesar el historial previo (si existe)
+            if history:
+                lines = history.split("\n")
+                for line in lines:
+                    if line.startswith("USER:"):
+                        contents.append({"role": "user", "parts": [{"text": line.replace("USER:", "").strip()}]})
+                    elif line.startswith("GLYPH:") or line.startswith("ASSISTANT:"):
+                        contents.append({"role": "model", "parts": [{"text": line.replace("GLYPH:", "").replace("ASSISTANT:", "").strip()}]})
+
+            # 2. Añadir el mensaje actual con sus archivos adjuntos
             user_parts = [{"text": question}]
             if image:
-                user_parts.append({
-                    "inline_data": {
-                        "mime_type": "image/jpeg",
-                        "data": image
-                    }
-                })
+                user_parts.append({"inline_data": {"mime_type": "image/jpeg", "data": image}})
             if audio:
-                user_parts.append({
-                    "inline_data": {
-                        "mime_type": "audio/mpeg", # Asumimos mp3/mpeg como estándar de audio
-                        "data": audio
-                    }
-                })
+                user_parts.append({"inline_data": {"mime_type": "audio/mpeg", "data": audio}})
+            
+            contents.append({"role": "user", "parts": user_parts})
 
             payload = {
-                "contents": [{"role": "user", "parts": user_parts}],
+                "contents": contents,
                 "generationConfig": {
                     "temperature": 0.7, 
                     "maxOutputTokens": 1024,
-                    "candidateCount": 1 # Forzamos una sola respuesta para ganar velocidad
+                    "candidateCount": 1
                 }
             }
             headers = {"x-goog-api-key": api_key}
             
-            # Usamos la sesión global (bypass_session) en lugar de requests directo
+            # Usamos la sesión global (bypass_session)
             response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
             
             if response.status_code == 200:
