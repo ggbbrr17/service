@@ -141,6 +141,13 @@ def run(
                         "data": image
                     }
                 })
+            if audio:
+                user_parts.append({
+                    "inline_data": {
+                        "mime_type": "audio/mpeg", # Asumimos mp3/mpeg como estándar de audio
+                        "data": audio
+                    }
+                })
 
             payload = {
                 "contents": [{"role": "user", "parts": user_parts}],
