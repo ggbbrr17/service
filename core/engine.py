@@ -165,6 +165,7 @@ def run(
                 
                 # Buscamos la parte que sea texto real, ignorando metadatos de "thought" o razonamiento
                 clean_text = ""
+                text_content = "" # Declaración preventiva para el linter
                 for part in all_parts:
                     text_content = part.get("text", "")
                     if text_content:
