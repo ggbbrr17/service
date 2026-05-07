@@ -3,12 +3,20 @@ from core.parser import safe_parse, normalize_steps
 from core.executor import plan_to_concrete_steps, execute_step
 from core.memory import load_memory, save_memory
 from datetime import datetime
+import requests
 import re
 import json
 import os
 import threading
 import sys
 import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Sesión global para Reutilización de Conexiones (Acelera Modo B)
+bypass_session = requests.Session()
+_retry_strategy = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+bypass_session.mount("https://", HTTPAdapter(max_retries=_retry_strategy))
 
 # Bloqueo para evitar corrupción de memoria al escribir desde hilos
 memory_lock = threading.Lock()
@@ -126,7 +134,6 @@ def run(
 
     if current_mode == "default":
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
-        import requests
         clean_text = ""
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
@@ -152,11 +159,16 @@ def run(
 
             payload = {
                 "contents": [{"role": "user", "parts": user_parts}],
-                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024}
+                "generationConfig": {
+                    "temperature": 0.7, 
+                    "maxOutputTokens": 1024,
+                    "candidateCount": 1 # Forzamos una sola respuesta para ganar velocidad
+                }
             }
             headers = {"x-goog-api-key": api_key}
             
-            response = requests.post(api_url, headers=headers, json=payload, timeout=90)
+            # Usamos la sesión global (bypass_session) en lugar de requests directo
+            response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
             
             if response.status_code == 200:
                 data = response.json()
