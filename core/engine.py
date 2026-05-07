@@ -127,7 +127,8 @@ def run(
     if current_mode == "default":
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
         import requests
-        target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
+        # Cambiamos a gemini-1.5-flash para asegurar respuesta directa sin "Thinking"
+        target = os.getenv("GLYPH_GEMINI_MODEL", "gemini-1.5-flash")
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
         
