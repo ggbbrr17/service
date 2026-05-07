@@ -125,27 +125,36 @@ def run(
         }
 
     if current_mode == "default":
-        # En Modo B, el sistema es CIEGO a Glyph
+        # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
+        import requests
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
         
-        # Llamada pura sin sistema, ni personalidad, NI historial.
-        ext_res = ask_external_model(
-            question, "", "", # Sin historial ni contexto de Glyph
-            model_name=target, api_key=api_key, api_url=api_url,
-            temperature=0.7
-        )
-        raw_text = ext_res.get("text", "Error en conexión directa.")
-        
-        # Limpieza de razonamiento que pueda colar el modelo
-        clean_text = re.sub(r'<(thought|thinking)>.*?</\1>', '', raw_text, flags=re.DOTALL | re.IGNORECASE)
-        
+        try:
+            # Payload minimalista nativo de Google (Sin envoltorios, sin scripts intermedios)
+            payload = {
+                "contents": [{"role": "user", "parts": [{"text": question}]}],
+                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024}
+            }
+            headers = {"x-goog-api-key": api_key}
+            
+            response = requests.post(api_url, headers=headers, json=payload, timeout=90)
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Extracción directa del JSON de Google
+                clean_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            else:
+                clean_text = f"ERROR_DIRECT_API: {response.status_code}"
+        except Exception as e:
+            clean_text = f"ERROR_CONNECTION_RAW: {e}"
+
         return {
             "question": question,
             "message": clean_text.strip(),
-            "metacognition": "", # Cero pensamientos internos
-            "active_model": "gemma-4-pure"
+            "metacognition": "", # Cero interferencia mental
+            "active_model": "gemma-4-raw-bypass"
         }
 
     # 3. LÓGICA NORMAL DE GLYPH (Solo si NO estamos en Modo B)
