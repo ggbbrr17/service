@@ -195,11 +195,12 @@ def run(
                 }
             }
             
+            # INYECCIÓN DE SILENCIO DIRECTA (Más fuerte que system_instruction)
             if not has_files:
+                contents[-1]["parts"][0]["text"] += "\n\n(Responde solo como SISTEMA, sin pensar en voz alta ni dar opciones)."
                 payload["tools"] = [{"google_search": {}}]
 
             headers = {"x-goog-api-key": api_key}
-            
             response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
             
             # FALLBACK DE SEGURIDAD: Si falla con error 500, reintentamos sin herramientas
@@ -212,15 +213,31 @@ def run(
                 data = response.json()
                 all_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                 
-                clean_text = ""
+                raw_response = ""
                 for part in all_parts:
                     t = part.get("text", "")
-                    if t: clean_text += t
+                    if t: raw_response += t
+                
+                # --- LIMPIEZA AGRESIVA DE PENSAMIENTOS ---
+                lines = raw_response.split("\n")
+                filtered_lines = []
+                for line in lines:
+                    # Si la línea tiene sangría o palabras clave de razonamiento, la ignoramos
+                    stripped = line.strip()
+                    if not line.startswith(" ") and not line.startswith("\t"):
+                        if stripped and not any(k in stripped.lower() for k in ["context:", "option:", "user says:", "maintain the"]):
+                            filtered_lines.append(line)
+                
+                # Si el filtro vacía todo, tomamos la última línea que no esté vacía
+                if not filtered_lines and lines:
+                    clean_text = lines[-1].strip()
+                else:
+                    clean_text = "\n".join(filtered_lines).strip()
                 
                 clean_text = clean_text.replace("*", "").strip()
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Limpia):\n{clean_text}")
             else:
-                clean_text = f"ERROR_DIRECT_API: {response.status_code}\nDetalle: {response.text}"
+                clean_text = f"ERROR_DIRECT_API: {response.status_code}"
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
                 print(f"📄 Detalle del error: {response.text}")
         except Exception as e:
