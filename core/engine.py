@@ -136,6 +136,8 @@ def run(
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
         clean_text = ""
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
+        if audio: target = "gemini-1.5-flash-latest" # Forzamos motor de audio nativo
+        
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
         
@@ -173,7 +175,7 @@ def run(
             if image:
                 user_parts.append({"inline_data": {"mime_type": "image/jpeg", "data": image}})
             if audio:
-                user_parts.append({"inline_data": {"mime_type": "audio/mpeg", "data": audio}})
+                user_parts.append({"inline_data": {"mime_type": "audio/mp4", "data": audio}})
             
             # Si el último mensaje del historial también fue 'user', lo fusionamos
             if contents and contents[-1]["role"] == "user":
