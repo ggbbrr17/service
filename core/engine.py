@@ -136,7 +136,7 @@ def run(
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
         clean_text = ""
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
-        if audio: target = "gemini-1.5-flash" # Forzamos motor de audio nativo
+        if audio: target = "gemini-2.5-flash" # Actualizado a la versión estable actual para audio
         
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
@@ -189,7 +189,7 @@ def run(
             
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": "Responde SIEMPRE en español. Ve directo a la respuesta sin mostrar procesos de pensamiento, ni análisis internos, ni texto en inglés. No repitas la pregunta del usuario. Responde de forma natural. Utiliza el guion '-' en lugar del asterisco '*' para formatear listas y viñetas."}]},
+                "system_instruction": {"parts": [{"text": "Eres un asistente virtual eficiente. Responde directa y exclusivamente en español. Usa el carácter '-' para crear listas."}]},
                 "generationConfig": {
                     "temperature": 0.5, # Temperatura estándar para interacciones nativas
                     "maxOutputTokens": 800,
@@ -220,13 +220,23 @@ def run(
                 
                 clean_text = raw_response.strip().replace("*", "-")
                 
-                # Filtro de emergencia por si el modelo filtra su pensamiento en inglés
-                if "analyze the image" in clean_text.lower() or "formulate the response" in clean_text.lower():
-                    # Intentamos extraer solo la parte en español (usualmente al final o después de los pasos)
+                clean_text = raw_response.strip().replace("*", "-")
+                
+                # Filtro robusto para cortar el "Chain of Thought" en inglés y listas de constraints
+                if any(kw in clean_text.lower() for kw in ["user question", "the user is asking", "constraint", "system instructions", "analyze"]):
                     lines = clean_text.split('\n')
-                    spanish_lines = [l for l in lines if l.strip() and not l.strip().lower().startswith(('1.', '2.', '3.', '4.', '5.', '-analyze', '-evaluate', '-formulate', '-consider', 'the user is asking'))]
-                    if spanish_lines:
-                        clean_text = "\n".join(spanish_lines).strip()
+                    final_lines = []
+                    # Leer desde abajo hacia arriba para capturar solo la respuesta final
+                    for line in reversed(lines):
+                        ls = line.strip().lower()
+                        if ls.startswith("- constraint") or ls.startswith("constraint") or "user question" in ls or "the user is asking" in ls or "system instructions" in ls:
+                            break
+                        final_lines.insert(0, line)
+                    if final_lines:
+                        clean_text = "\n".join(final_lines).strip()
+                
+                # Limpiar frases boilerplate pegadas al texto
+                clean_text = clean_text.replace("I am a large language model trained by Google.", "").replace("I am a large language model, trained by Google.", "").strip()
                 
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Nativa):\n{clean_text}")
             else:
