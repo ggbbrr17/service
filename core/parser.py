@@ -147,11 +147,11 @@ def normalize_steps(steps, question=""):
 
     # Acciones que el executor.py realmente sabe manejar
     valid_actions = [
-        "write_plugin", "open_browser", "search", "background_research",
+        "write_plugin", "open_browser", "search", "read_url", "background_research",
         "run_custom_script", "self_upgrade", "type_text", "press", 
         "screenshot", "read_file", "list_processes", "click_at", "hotkey",
         "find_file", "get_latest_download", "run_app", "update_heartbeat",
-        "close_agent", "restart_agent", "analyze_dataset", "smart_click", "wait", "read_screen_text",
+        "setup_push", "close_agent", "restart_agent", "analyze_dataset", "smart_click", "wait", "read_screen_text",
         "neural_memory_synthesis", "trigger_cmd", "launch_gui", "say", "connect_dependency",
         "list_files", "write_file", "modify_file", "git_sync"
     ]

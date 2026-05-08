@@ -69,9 +69,21 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
     if concrete_steps:
         print(f"⚙️ [Async] Ejecutando {len(concrete_steps)} pasos en segundo plano...")
         results = []
+        # Acciones que disparan una sincronización automática
+        mutation_actions = ["write_file", "modify_file", "write_plugin", "self_upgrade"]
+        mutation_occurred = False
+
         for s in concrete_steps:
             ok, msg = execute_step(s)
             results.append({"action": s.get("action"), "ok": ok, "msg": msg})
+            
+            if ok and s.get("action") in mutation_actions:
+                mutation_occurred = True
+
+        # AUTO-SYNC: Si hubo cambios en el sistema, sincronizamos con GitHub inmediatamente
+        if mutation_occurred:
+            print("🔄 [Auto-Sync] Detectadas modificaciones de código. Sincronizando con GitHub...")
+            execute_step({"action": "git_sync", "message": f"Glyph Auto-Sync: Cambios tras '{question[:40]}...'"})
         
         # Una vez terminados los pasos, generamos un mensaje de cierre
         if results:

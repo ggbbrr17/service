@@ -44,6 +44,22 @@ def execute_step(step: dict, dry_run: bool = False):
                 webbrowser.open(url)
             return True, f"Buscando: {query}"
 
+        elif action == "read_url":
+            url = step.get("url")
+            if not url: return False, "Falta la URL para leer."
+            try:
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+                res = requests.get(url, headers=headers, timeout=15)
+                res.raise_for_status()
+                # Limpieza básica de HTML para extraer texto útil
+                text = re.sub(r'<script.*?>.*?</script>', '', res.text, flags=re.DOTALL)
+                text = re.sub(r'<style.*?>.*?</style>', '', text, flags=re.DOTALL)
+                text = re.sub(r'<[^>]+>', ' ', text)
+                clean_text = " ".join(text.split())
+                return True, f"Contenido extraído de {url} (fragmento):\n{clean_text[:3500]}"
+            except Exception as e:
+                return False, f"Error al leer la URL: {str(e)}"
+
         elif action == "background_research":
             query = step.get("query")
             if not query: return False, "Falta la consulta para investigar."
@@ -129,7 +145,7 @@ def execute_step(step: dict, dry_run: bool = False):
             if not path or not os.path.exists(path): return False, "Archivo no encontrado"
             try:
                 df = pd.read_csv(path) if path.endswith('.csv') else pd.read_json(path)
-                return True, f"Dataset analizado: {len(df)} registros.\n{df.describe().to_string()[:1000]}"
+                return True, f"Dataset analizado: {len(df)} registros.\nSummary:\n{df.describe().to_string()[:500]}\n\nHead:\n{df.head().to_string()}"
             except Exception as e:
                 return False, str(e)
 
@@ -163,17 +179,30 @@ def execute_step(step: dict, dry_run: bool = False):
         elif action == "git_sync":
             commit_msg = step.get("message", "Glyph Autonomous Sync")
             try:
-                # 1. Add
-                subprocess.run(["git", "add", "."], check=True, capture_output=True)
-                # 2. Commit
-                subprocess.run(["git", "commit", "-m", commit_msg], check=True, capture_output=True)
-                # 3. Push
+                # 1. Preparar cambios (permitimos capturar salida como texto)
+                subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
+                # 2. Commit (permitimos que falle si no hay cambios)
+                subprocess.run(["git", "commit", "-m", commit_msg], check=False, capture_output=True, text=True)
+                # 3. Pull con rebase para evitar conflictos simples
+                subprocess.run(["git", "pull", "--rebase"], check=False, capture_output=True, text=True)
+                # 4. Push
                 res = subprocess.run(["git", "push"], check=True, capture_output=True, text=True)
                 return True, f"Sincronización con GitHub exitosa: {res.stdout}"
             except subprocess.CalledProcessError as e:
                 return False, f"Error en Git: {e.stderr}"
             except Exception as e:
                 return False, f"Error inesperado en sincronización: {str(e)}"
+
+        elif action == "setup_push":
+            topic = step.get("topic")
+            if not topic:
+                import secrets
+                topic = f"glyph_gabriel_{secrets.token_hex(4)}"
+            mem = load_memory()
+            if "datos" not in mem: mem["datos"] = {}
+            mem["datos"]["ntfy_topic"] = topic
+            save_memory(mem)
+            return True, f"Notificaciones Push configuradas. Suscríbete en: https://ntfy.sh/{topic}"
 
         elif action == "close_agent":
             os._exit(0)
