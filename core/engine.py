@@ -70,7 +70,7 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
         print(f"⚙️ [Async] Ejecutando {len(concrete_steps)} pasos en segundo plano...")
         results = []
         # Acciones que disparan una sincronización automática
-        mutation_actions = ["write_file", "modify_file", "write_plugin", "self_upgrade"]
+        mutation_actions = ["write_file", "modify_file", "write_plugin", "self_upgrade", "update_app_icon"]
         mutation_occurred = False
 
         for s in concrete_steps:

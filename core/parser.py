@@ -151,9 +151,9 @@ def normalize_steps(steps, question=""):
         "run_custom_script", "self_upgrade", "type_text", "press", 
         "screenshot", "read_file", "list_processes", "click_at", "hotkey",
         "find_file", "get_latest_download", "run_app", "update_heartbeat",
-        "setup_push", "update_app_icon", "close_agent", "restart_agent", "analyze_dataset", "smart_click", "wait", "read_screen_text",
+        "setup_push", "check_git_status", "update_app_icon", "close_agent", "restart_agent", "analyze_dataset", "smart_click", "wait", "read_screen_text",
         "neural_memory_synthesis", "trigger_cmd", "launch_gui", "say", "connect_dependency",
-        "list_files", "write_file", "modify_file", "git_sync"
+        "write_file", "modify_file", "git_sync"
     ]
 
     normalized = []

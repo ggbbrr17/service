@@ -179,23 +179,34 @@ def execute_step(step: dict, dry_run: bool = False):
         elif action == "git_sync":
             commit_msg = step.get("message", "Glyph Autonomous Sync")
             try:
-                # 0. Verificar si es un repositorio git
+                # 0. Verificar si es un repositorio git y obtener rama actual
                 if not os.path.exists(".git"):
                     return False, "Error: El directorio actual no es un repositorio Git."
+                branch_res = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True)
+                branch = branch_res.stdout.strip() or "main"
 
                 # 1. Preparar cambios
                 subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
                 # 2. Commit (permitimos que falle si no hay cambios)
                 subprocess.run(["git", "commit", "-m", commit_msg], check=False, capture_output=True, text=True)
                 # 3. Pull con rebase para evitar conflictos simples
-                subprocess.run(["git", "pull", "--rebase", "origin", "main"], check=False, capture_output=True, text=True)
+                subprocess.run(["git", "pull", "--rebase", "origin", branch], check=False, capture_output=True, text=True)
                 # 4. Push
-                res = subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True, text=True)
+                res = subprocess.run(["git", "push", "origin", branch], check=True, capture_output=True, text=True)
                 return True, f"Sincronización con GitHub exitosa: {res.stdout}"
             except subprocess.CalledProcessError as e:
                 return False, f"Error en Git: {e.stderr}"
             except Exception as e:
                 return False, f"Error inesperado en sincronización: {str(e)}"
+
+        elif action == "check_git_status":
+            try:
+                if not os.path.exists(".git"): return False, "No es un repositorio Git."
+                subprocess.run(["git", "fetch"], check=True, capture_output=True, text=True)
+                status = subprocess.run(["git", "status", "-t", "origin/main"], check=False, capture_output=True, text=True)
+                return True, f"Estado:\n{status.stdout}\nComparación con origin/main:\n{diff.stdout if diff.stdout else 'Totalmente sincronizado.'}"
+            except Exception as e:
+                return False, f"Error en status: {str(e)}"
 
         elif action == "update_app_icon":
             new_icon = step.get("path")
