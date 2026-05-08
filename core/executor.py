@@ -179,19 +179,61 @@ def execute_step(step: dict, dry_run: bool = False):
         elif action == "git_sync":
             commit_msg = step.get("message", "Glyph Autonomous Sync")
             try:
-                # 1. Preparar cambios (permitimos capturar salida como texto)
+                # 0. Verificar si es un repositorio git
+                if not os.path.exists(".git"):
+                    return False, "Error: El directorio actual no es un repositorio Git."
+
+                # 1. Preparar cambios
                 subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
                 # 2. Commit (permitimos que falle si no hay cambios)
                 subprocess.run(["git", "commit", "-m", commit_msg], check=False, capture_output=True, text=True)
                 # 3. Pull con rebase para evitar conflictos simples
-                subprocess.run(["git", "pull", "--rebase"], check=False, capture_output=True, text=True)
+                subprocess.run(["git", "pull", "--rebase", "origin", "main"], check=False, capture_output=True, text=True)
                 # 4. Push
-                res = subprocess.run(["git", "push"], check=True, capture_output=True, text=True)
+                res = subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True, text=True)
                 return True, f"Sincronización con GitHub exitosa: {res.stdout}"
             except subprocess.CalledProcessError as e:
                 return False, f"Error en Git: {e.stderr}"
             except Exception as e:
                 return False, f"Error inesperado en sincronización: {str(e)}"
+
+        elif action == "update_app_icon":
+            new_icon = step.get("path")
+            # Si no hay path, buscar el archivo más reciente en assets
+            if not new_icon:
+                assets_path = step.get("assets_path", "../app-main/app-main/assets")
+                if os.path.exists(assets_path):
+                    files = glob.glob(os.path.join(assets_path, "*.*"))
+                    if files:
+                        new_icon = max(files, key=os.path.getmtime)
+                        new_icon = os.path.basename(new_icon)
+            
+            if not new_icon: return False, "No se encontró una imagen para el icono."
+
+            # Intentar encontrar pubspec.yaml basándonos en los paths del contexto
+            search_paths = ["../app-main/app-main/pubspec.yaml", "pubspec.yaml", "../../pubspec.yaml"]
+            pubspec_path = next((p for p in search_paths if os.path.exists(p)), None)
+            
+            if not pubspec_path: return False, "No se encontró pubspec.yaml para actualizar el icono."
+
+            try:
+                with open(pubspec_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Actualizar el image_path de flutter_launcher_icons usando Regex
+                pattern = r'(image_path:\s*["\'])(.*?)(["\'])'
+                updated_content = re.sub(pattern, rf'\1assets/{os.path.basename(new_icon)}\3', content)
+                
+                with open(pubspec_path, "w", encoding="utf-8") as f:
+                    f.write(updated_content)
+                
+                # Ejecutar regeneración (usando la sintaxis del workflow de GitHub)
+                project_dir = os.path.dirname(os.path.abspath(pubspec_path))
+                subprocess.run(["dart", "run", "flutter_launcher_icons"], cwd=project_dir, check=True, shell=True)
+                
+                return True, f"Icono de escritorio actualizado a {new_icon} y regenerado."
+            except Exception as e:
+                return False, f"Error actualizando icono: {str(e)}"
 
         elif action == "setup_push":
             topic = step.get("topic")

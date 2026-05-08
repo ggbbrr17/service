@@ -1,5 +1,6 @@
 import json
 import os
+import requests
 try:
     import certifi
     ca = certifi.where()
@@ -106,6 +107,22 @@ def add_notification(message: str, type: str = "info"):
     # Mantener solo las últimas 20 notificaciones
     mem["pending_notifications"] = mem["pending_notifications"][-20:]
     save_memory(mem)
+
+    # --- PUSH NOTIFICATION (ntfy.sh) ---
+    topic = mem.get("datos", {}).get("ntfy_topic")
+    if topic:
+        try:
+            requests.post(
+                f"https://ntfy.sh/{topic}",
+                data=message.encode('utf-8'),
+                headers={
+                    "Title": f"Glyph: {type.upper()}",
+                    "Priority": "high" if type == "task_complete" else "default"
+                },
+                timeout=5
+            )
+        except:
+            pass
 
 def get_notifications(clear: bool = True):
     """Obtiene y opcionalmente limpia las notificaciones pendientes."""

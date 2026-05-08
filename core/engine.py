@@ -83,7 +83,7 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
         # AUTO-SYNC: Si hubo cambios en el sistema, sincronizamos con GitHub inmediatamente
         if mutation_occurred:
             print("🔄 [Auto-Sync] Detectadas modificaciones de código. Sincronizando con GitHub...")
-            execute_step({"action": "git_sync", "message": f"Glyph Auto-Sync: Cambios tras '{question[:40]}...'"})
+            execute_step({"action": "git_sync", "message": f"feat: automated sync - {question[:50]}..."})
         
         # Una vez terminados los pasos, generamos un mensaje de cierre
         if results:
@@ -201,7 +201,7 @@ def run(
             
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": "Eres un asistente virtual eficiente. Responde directa y exclusivamente en español. Usa el carácter '-' para crear listas."}]},
+                "system_instruction": {"parts": [{"text": "Eres un asistente virtual eficiente. Responde directa y exclusivamente en español. No incluyas procesos de pensamiento, análisis de restricciones, ni explicaciones internas. Ve directamente a la respuesta final. Usa el carácter '-' para crear listas."}]},
                 "generationConfig": {
                     "temperature": 0.5, # Temperatura estándar para interacciones nativas
                     "maxOutputTokens": 800,
@@ -235,13 +235,13 @@ def run(
                 clean_text = raw_response.strip().replace("*", "-")
                 
                 # Filtro robusto para cortar el "Chain of Thought" en inglés y listas de constraints
-                if any(kw in clean_text.lower() for kw in ["user question", "the user is asking", "constraint", "system instructions", "analyze"]):
+                if any(kw in clean_text.lower() for kw in ["user question", "the user is asking", "constraint", "system instructions", "analyze", "i should respond", "user says"]):
                     lines = clean_text.split('\n')
                     final_lines = []
                     # Leer desde abajo hacia arriba para capturar solo la respuesta final
                     for line in reversed(lines):
                         ls = line.strip().lower()
-                        if ls.startswith("- constraint") or ls.startswith("constraint") or "user question" in ls or "the user is asking" in ls or "system instructions" in ls:
+                        if any(stop in ls for stop in ["constraint", "user question", "the user is asking", "system instruction", "i should respond", "user says", "analyze"]):
                             break
                         final_lines.insert(0, line)
                     if final_lines:
