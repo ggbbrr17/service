@@ -145,7 +145,13 @@ def execute_step(step: dict, dry_run: bool = False):
             if not path or not os.path.exists(path): return False, "Archivo no encontrado"
             try:
                 df = pd.read_csv(path) if path.endswith('.csv') else pd.read_json(path)
-                return True, f"Dataset analizado: {len(df)} registros.\nSummary:\n{df.describe().to_string()[:500]}\n\nHead:\n{df.head().to_string()}"
+                cols = list(df.columns)
+                nulls = df.isnull().sum().sum()
+                report = f"Dataset: {os.path.basename(path)} ({len(df)} filas)\n"
+                report += f"Columnas: {', '.join(cols[:10])}{'...' if len(cols)>10 else ''}\n"
+                report += f"Calidad: {nulls} valores nulos detectados.\n"
+                report += f"Resumen Estadístico:\n{df.describe().to_string()[:600]}"
+                return True, report
             except Exception as e:
                 return False, str(e)
 
@@ -190,20 +196,19 @@ def execute_step(step: dict, dry_run: bool = False):
                 # 2. Commit (permitimos que falle si no hay cambios)
                 subprocess.run(["git", "commit", "-m", commit_msg], check=False, capture_output=True, text=True)
                 # 3. Pull con rebase para evitar conflictos simples
-                subprocess.run(["git", "pull", "--rebase", "origin", branch], check=False, capture_output=True, text=True)
+                subprocess.run(["git", "pull", "--rebase", "origin", branch], check=True, capture_output=True, text=True)
                 # 4. Push
-                res = subprocess.run(["git", "push", "origin", branch], check=True, capture_output=True, text=True)
+                res = subprocess.run(["git", "push", "-u", "origin", branch], check=True, capture_output=True, text=True)
                 return True, f"Sincronización con GitHub exitosa: {res.stdout}"
             except subprocess.CalledProcessError as e:
                 return False, f"Error en Git: {e.stderr}"
-            except Exception as e:
-                return False, f"Error inesperado en sincronización: {str(e)}"
 
         elif action == "check_git_status":
             try:
                 if not os.path.exists(".git"): return False, "No es un repositorio Git."
                 subprocess.run(["git", "fetch"], check=True, capture_output=True, text=True)
-                status = subprocess.run(["git", "status", "-t", "origin/main"], check=False, capture_output=True, text=True)
+                status = subprocess.run(["git", "status", "-sb"], check=True, capture_output=True, text=True)
+                diff = subprocess.run(["git", "diff", "--stat", "origin/main"], check=False, capture_output=True, text=True)
                 return True, f"Estado:\n{status.stdout}\nComparación con origin/main:\n{diff.stdout if diff.stdout else 'Totalmente sincronizado.'}"
             except Exception as e:
                 return False, f"Error en status: {str(e)}"

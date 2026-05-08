@@ -83,7 +83,7 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
         # AUTO-SYNC: Si hubo cambios en el sistema, sincronizamos con GitHub inmediatamente
         if mutation_occurred:
             print("🔄 [Auto-Sync] Detectadas modificaciones de código. Sincronizando con GitHub...")
-            execute_step({"action": "git_sync", "message": f"feat: automated sync - {question[:50]}..."})
+            execute_step({"action": "git_sync", "message": f"feat: auto-sync | {question[:40]}..."})
         
         # Una vez terminados los pasos, generamos un mensaje de cierre
         if results:
@@ -143,9 +143,32 @@ def run(
             "metacognition": "",
             "active_model": "gemma-4-sovereign"
         }
+    elif q_clean == "modo offline":
+        with memory_lock:
+            mem["datos"]["system_mode"] = "offline"
+            save_memory(mem)
+        return {
+            "message": "SISTEMA: Modo Offline activado. Utilizando Gemma local (Ollama).",
+            "metacognition": "Cambio a red neuronal local detectado.",
+            "active_model": "gemma-2b-local"
+        }
 
-    if current_mode == "default":
+    if current_mode == "default" or current_mode == "offline":
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
+        if current_mode == "offline":
+            print("🔌 [OFFLINE] Ejecutando vía Ollama (Gemma Local)...")
+            local_res = planner(question, history, context="", model="gemma2:2b")
+            msg = local_res.get("text", "")
+            if "ERROR_CONNECTION" in msg:
+                msg = "⚠️ No puedo conectar con el modelo local. Asegúrate de que Ollama esté corriendo o tu PC encendida. Escribe 'Modo Soberano' para volver a la nube."
+            
+            return {
+                "question": question,
+                "message": msg,
+                "metacognition": "Respuesta generada localmente.",
+                "active_model": "gemma-local"
+            }
+
         clean_text = ""
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
         if audio: target = "gemini-2.5-flash" # Actualizado a la versión estable actual para audio
@@ -229,19 +252,17 @@ def run(
                 for part in all_parts:
                     t = part.get("text", "")
                     if t: raw_response += t
-                
-                clean_text = raw_response.strip().replace("*", "-")
-                
+
                 clean_text = raw_response.strip().replace("*", "-")
                 
                 # Filtro robusto para cortar el "Chain of Thought" en inglés y listas de constraints
-                if any(kw in clean_text.lower() for kw in ["user question", "the user is asking", "constraint", "system instructions", "analyze", "i should respond", "user says"]):
+                if any(kw in clean_text.lower() for kw in ["user question", "the user is asking", "constraint", "system instructions", "analyze", "i should respond", "user says", "thought process"]):
                     lines = clean_text.split('\n')
                     final_lines = []
                     # Leer desde abajo hacia arriba para capturar solo la respuesta final
                     for line in reversed(lines):
                         ls = line.strip().lower()
-                        if any(stop in ls for stop in ["constraint", "user question", "the user is asking", "system instruction", "i should respond", "user says", "analyze"]):
+                        if any(stop in ls for stop in ["constraint", "user question", "the user is asking", "system instruction", "i should respond", "user says", "analyze", "thought process"]):
                             break
                         final_lines.insert(0, line)
                     if final_lines:
