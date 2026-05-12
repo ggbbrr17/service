@@ -336,9 +336,8 @@ def run(
                 # Eliminar explicaciones de IA persistentes
                 clean_text = re.sub(r'(As an AI|I am a large language model|I am an AI).*?(\.|\n|$)', '', clean_text, flags=re.IGNORECASE | re.DOTALL).strip()
                 
-                # Si después de limpiar el plan_text sigue siendo el raw, aplicamos la limpieza también al plan_text
-                # pero solo si no es un JSON válido.
-                if not json_match:
+                # Si plan_text NO fue aislado como JSON, lo sincronizamos con clean_text.
+                if not tag_match and not ('\"steps\"' in plan_text):
                     plan_text = clean_text
 
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Nativa):\n{clean_text}")
