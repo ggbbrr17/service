@@ -191,15 +191,31 @@ def execute_step(step: dict, dry_run: bool = False):
                 branch_res = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True)
                 branch = branch_res.stdout.strip() or "main"
 
-                # 1. Preparar cambios
+                # 1. Añadir todos los cambios al índice
                 subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
-                # 2. Commit (permitimos que falle si no hay cambios)
+
+                # 2. Commit (si no hay nada nuevo, no falla)
                 subprocess.run(["git", "commit", "-m", commit_msg], check=False, capture_output=True, text=True)
-                # 3. Pull con rebase para evitar conflictos simples
-                subprocess.run(["git", "pull", "--rebase", "origin", branch], check=True, capture_output=True, text=True)
-                # 4. Push
-                res = subprocess.run(["git", "push", "-u", "origin", branch], check=True, capture_output=True, text=True)
-                return True, f"Sincronización con GitHub exitosa: {res.stdout}"
+
+                # 3. Push directo primero (evita el pull --rebase con cambios pendientes)
+                push_res = subprocess.run(["git", "push", "-u", "origin", branch], capture_output=True, text=True)
+
+                # 4. Si el push fue rechazado por cambios remotos, hacemos pull --rebase y reintentamos
+                if push_res.returncode != 0:
+                    pull_res = subprocess.run(
+                        ["git", "pull", "--rebase", "origin", branch],
+                        capture_output=True, text=True
+                    )
+                    if pull_res.returncode != 0:
+                        return False, f"Error en pull --rebase: {pull_res.stderr}"
+                    push_res = subprocess.run(
+                        ["git", "push", "-u", "origin", branch],
+                        capture_output=True, text=True
+                    )
+                    if push_res.returncode != 0:
+                        return False, f"Error en push tras rebase: {push_res.stderr}"
+
+                return True, f"✅ Sincronización con GitHub exitosa en rama '{branch}'."
             except subprocess.CalledProcessError as e:
                 return False, f"Error en Git: {e.stderr}"
 
