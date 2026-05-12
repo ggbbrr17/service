@@ -232,9 +232,10 @@ def run(
             # Solo activamos búsqueda si no hay archivos pesados o si es una pregunta de texto puro.
             has_files = image is not None or audio is not None
             
+            valid_actions = "search, read_url, background_research, read_file, list_files, write_file, modify_file, analyze_dataset, update_heartbeat, code_memory_synthesis, neural_memory_synthesis, wait, close_agent, restart_agent, git_sync, update_app_icon, check_git_status"
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": "Eres un asistente virtual eficiente. Responde directa y exclusivamente en español. No incluyas procesos de pensamiento, análisis de restricciones, ni explicaciones internas. Ve directamente a la respuesta final. Usa el carácter '-' para crear listas."}]},
+                "system_instruction": {"parts": [{"text": f"Eres un asistente virtual eficiente. Responde directa y exclusivamente en español. No incluyas procesos de pensamiento. Si necesitas realizar una acción, usa este formato JSON: {{\"steps\": [{{'action': 'nombre_accion', 'arg': 'valor'}}]}}. ACCIONES DISPONIBLES: [{valid_actions}]. Si no hay acción, responde solo con texto plano."}]},
                 "generationConfig": {
                     "temperature": 0.5, # Temperatura estándar para interacciones nativas
                     "maxOutputTokens": 800,
@@ -282,20 +283,27 @@ def run(
                 clean_text = clean_text.replace("I am a large language model trained by Google.", "").replace("I am a large language model, trained by Google.", "").strip()
                 
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Nativa):\n{clean_text}")
+                plan_text = clean_text # Para que el motor lo procese si hay JSON
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
+                plan_text = clean_text
                 print(f"❌ [CERO ABSOLUTO] Error en API Directa: {response.status_code}")
                 print(f"📄 Detalle del error: {response.text}")
         except Exception as e:
             clean_text = f"ERROR_CONNECTION_RAW: {e}"
+            plan_text = clean_text
             print(f"⚠️ [CERO ABSOLUTO] Error de conexión: {e}")
 
-        return {
-            "question": question,
-            "message": clean_text.strip(),
-            "metacognition": "", # Cero interferencia mental
-            "active_model": "gemma-4-raw-bypass"
-        }
+        # En Modo B, si no hay JSON, retornamos directo. Si hay, dejamos que el motor lo parsee.
+        if "{\"steps\":" not in plan_text and "[{\"action\":" not in plan_text:
+            return {
+                "question": question,
+                "message": clean_text.strip(),
+                "metacognition": "", # Cero interferencia mental
+                "active_model": "gemma-4-raw-bypass"
+            }
+        # Si hay JSON, plan_text ya está seteado y el código seguirá abajo.
+        active_model = "gemma-4-raw-bypass"
 
     # 3. LÓGICA NORMAL DE GLYPH (Solo si NO estamos en Modo B)
     # Registrar interacción si viene del usuario
