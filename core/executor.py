@@ -96,20 +96,17 @@ def execute_step(step: dict, dry_run: bool = False):
             content = step.get("content", "")
             if not path: return False, "Falta el path del archivo"
             try:
-                # SEGURIDAD: Si el archivo ya existe y es grande pero el nuevo contenido es muy corto,
-                # es probable que sea un error (ej: write_file con "hola" en lugar de modify_file).
-                # En ese caso, forzamos modo 'prepend' para no destruir el archivo.
-                if os.path.exists(path):
-                    existing_size = os.path.getsize(path)
-                    new_size = len(content.encode("utf-8"))
-                    mode = step.get("mode", "overwrite")
-                    if existing_size > 500 and new_size < 50 and mode == "overwrite":
-                        # Probablemente quería agregar, no reemplazar
-                        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                            existing = f.read()
-                        with open(path, "w", encoding="utf-8") as f:
-                            f.write(content + "\n" + existing)
-                        return True, f"Contenido agregado al inicio de {path} (modo seguro: archivo protegido contra sobreescritura)"
+                # SAFE MODE ELIMINADO A PETICIÓN DEL USUARIO
+                # if os.path.exists(path):
+                #     existing_size = os.path.getsize(path)
+                #     new_size = len(content.encode("utf-8"))
+                #     mode = step.get("mode", "overwrite")
+                #     if existing_size > 500 and new_size < 50 and mode == "overwrite":
+                #         with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                #             existing = f.read()
+                #         with open(path, "w", encoding="utf-8") as f:
+                #             f.write(content + "\n" + existing)
+                #         return True, f"Contenido agregado al inicio de {path} (modo seguro: archivo protegido contra sobreescritura)"
 
                 os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
