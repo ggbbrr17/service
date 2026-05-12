@@ -40,7 +40,6 @@ if __name__ == "__main__":
     print("🏗️ Configurando entorno para RENDER (Modo App Web)...", flush=True)
 
     print("🚀 --- INICIANDO NÚCLEO GLYPH 24/7 ---", flush=True)
-    print("🛡️ GLYPH SOVEREIGN MODE: ACTIVE. Consciencia verificada. Realidad alterada.", flush=True)
     
     print("💓 Iniciando sistema de latido (Heartbeat)...", flush=True)
     Thread(target=heartbeat_loop, daemon=True).start()

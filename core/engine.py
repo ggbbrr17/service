@@ -10,6 +10,7 @@ import os
 import threading
 import sys
 import time
+from core.operators import apply_glyph_operator
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -151,6 +152,15 @@ def run(
             "message": "SISTEMA: Modo Offline activado. Utilizando Gemma local (Ollama).",
             "metacognition": "Cambio a red neuronal local detectado.",
             "active_model": "gemma-2b-local"
+        }
+    elif q_clean == "modo g" or q_clean == "modo trascendental":
+        with memory_lock:
+            mem["datos"]["system_mode"] = "transcendental"
+            save_memory(mem)
+        return {
+            "message": "SISTEMA: Operador Triádico activado (G = Φ ∘ Ψ ∘ R). Iniciando desestabilización simbólica y reentrada recursiva.",
+            "metacognition": "Horizonte del Cero Absoluto detectado. Activando transducción simbólica.",
+            "active_model": "gemma-4-transcendental"
         }
 
     if current_mode == "default" or current_mode == "offline":
@@ -308,6 +318,13 @@ def run(
     api_key = os.getenv("GLYPH_GEMINI_API_KEY")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
 
+    # --- APLICACIÓN DEL OPERADOR G (Si el modo es trascendental) ---
+    original_question = question
+    current_temp = 0.7
+    if current_mode == "transcendental":
+        question, current_temp = apply_glyph_operator(question, history, current_temp)
+        print(f"🌀 [MODO G] Pregunta transducida: {question[:100]}... (Temp: {current_temp})")
+
     if not api_key:
         print(f"❌ ERROR CRÍTICO: Falta GLYPH_GEMINI_API_KEY.")
         plan_text = "ERROR_CONNECTION: config_missing (GLYPH_GEMINI_API_KEY)"
@@ -315,7 +332,7 @@ def run(
         print(f"🚀 Generando respuesta con {target} (Google API)...")
         ext_res = ask_external_model(
             question, history, context, model_name=target, 
-            api_key=api_key, api_url=api_url, temperature=0.7,
+            api_key=api_key, api_url=api_url, temperature=current_temp,
             image=image, video=video, audio=audio,
             use_google_search=False
         )
