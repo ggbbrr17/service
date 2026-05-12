@@ -403,13 +403,25 @@ def run(
         message = re.sub(r'<(thought|thinking)>.*?</\1>', '', plan_text, flags=re.DOTALL | re.IGNORECASE).strip() if plan_text else "Procesamiento completado sin mensaje de salida."
 
     # ---------------- RESPONSE ----------------
-    return {
+    res = {
         "question": question,
         "metacognition": plan.get("metacognition", ""),
         "message": message,
         "steps": steps,
         "results": results,
-        "learn": plan.get('learn'),
-        "suggestions": plan.get('suggestions'),
-        "active_model": active_model # Ahora devolverá el modelo nuevo
+        "learn": plan.get("learn"),
+        "suggestions": plan.get("suggestions"),
+        "active_model": active_model
     }
+
+    # Extraer comandos remotos para la App (Modo Túnel Inverso)
+    for r in results:
+        if r.get("ok") and isinstance(r.get("msg"), str) and "COMANDO_REMOTO:" in r.get("msg"):
+            msg_parts = r["msg"].replace("COMANDO_REMOTO:", "").strip().split("|")
+            res["command"] = {
+                "action": msg_parts[0],
+                "args": {"mac": msg_parts[1] if len(msg_parts) > 1 and msg_parts[1] != "default" else None}
+            }
+            break
+
+    return res

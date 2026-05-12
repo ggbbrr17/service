@@ -151,7 +151,7 @@ def normalize_steps(steps, question=""):
         "run_custom_script", "self_upgrade", "type_text", "press", 
         "screenshot", "read_file", "list_processes", "click_at", "hotkey",
         "find_file", "get_latest_download", "run_app", "update_heartbeat",
-        "setup_push", "check_git_status", "update_app_icon", "close_agent", "restart_agent", "analyze_dataset", "smart_click", "wait", "read_screen_text",
+        "setup_push", "check_git_status", "update_app_icon", "close_agent", "restart_agent", "analyze_dataset", "smart_click", "wait", "read_screen_text", "wake_on_lan",
         "neural_memory_synthesis", "trigger_cmd", "launch_gui", "say", "connect_dependency",
         "write_file", "modify_file", "git_sync"
     ]
@@ -207,6 +207,11 @@ def normalize_steps(steps, question=""):
             if s["action"] == "run_custom_script":
                 if "script" not in s and "command" in s: s["script"] = s["command"]
                 if "script" not in s and "code" in s: s["script"] = s["code"]
+
+            # Normalización para Wake on LAN
+            if s["action"] == "wake_on_lan":
+                if "mac" not in s and "mac_address" in s: s["mac"] = s["mac_address"]
+                if "ip" not in s and "host" in s: s["ip"] = s["host"]
 
             # Asegurar parámetros
             if s["action"] == "type_text" and "text" not in s and "query" in s:

@@ -269,6 +269,12 @@ def execute_step(step: dict, dry_run: bool = False):
             python = sys.executable
             os.execl(python, python, *sys.argv)
 
+        elif action == "wake_on_lan":
+            mac = step.get("mac")
+            # En el servidor (nube), no podemos enviar el paquete directamente, 
+            # pero marcamos la acción para que la App la ejecute localmente.
+            return True, f"COMANDO_REMOTO: wake_on_lan|{mac if mac else 'default'}"
+
         else:
             return False, f"Acción '{action}' deshabilitada o desconocida."
 
