@@ -28,9 +28,17 @@ def safe_parse(text: str, question: str = "") -> dict:
     print(f"\n[DEBUG] RAW AI RESPONSE:\n{text}\n")
 
     # 2. Limpieza para el parser JSON
-    # Solo eliminamos los tags de pensamiento interno — NO las líneas con asterisco,
-    # ya que Gemma 4 responde en formato de lista con * y borrarlas destruye la respuesta.
+    # Solo eliminamos los tags de pensamiento interno
     text = re.sub(r'<(thought|thinking)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    
+    # EXTRA: Si el texto contiene pensamientos en inglés típicos de Gemini, cortamos por lo sano
+    thought_markers = ["the user wants", "i should respond", "i will", "wait, i am an ai", "scenario a", "option a"]
+    if any(m in text.lower() for m in thought_markers):
+        # Buscamos si hay un JSON al final o al principio y lo intentamos aislar
+        json_search = re.search(r'(\{[\s\S]*?"steps"[\s\S]*?\})', text)
+        if json_search:
+            text = json_search.group(1)
+            print(f"[DEBUG] Parser aisló JSON de pensamientos: {text[:50]}...")
 
     data = None
     try:

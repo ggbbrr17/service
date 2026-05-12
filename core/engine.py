@@ -235,10 +235,10 @@ def run(
             valid_actions = "search, read_url, background_research, read_file, list_files, write_file, modify_file, analyze_dataset, update_heartbeat, code_memory_synthesis, neural_memory_synthesis, wait, close_agent, restart_agent, git_sync, update_app_icon, check_git_status"
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": f"Eres un asistente virtual eficiente. Responde directa y exclusivamente en ESPAÑOL. PROHIBIDO incluir procesos de pensamiento, razonamiento en inglés o análisis internos en la respuesta final. Si necesitas realizar una acción técnica, responde ÚNICAMENTE con el bloque JSON siguiendo este formato: {{\"steps\": [{{'action': 'nombre_accion', 'arg': 'valor'}}]}}. No añadidas texto antes ni después del JSON si vas a ejecutar una acción. ACCIONES DISPONIBLES: [{valid_actions}]. Si no hay acción, responde solo con texto plano en español."}]},
+                "system_instruction": {"parts": [{"text": f"Eres un asistente virtual eficiente. Responde directa y exclusivamente en ESPAÑOL. PROHIBIDO incluir procesos de pensamiento o razonamiento en inglés. Si vas a realizar una acción técnica, responde ÚNICAMENTE con el bloque JSON envuelto en etiquetas [JSON] y [/JSON]. Ejemplo: [JSON]{{\"steps\": [{{'action': 'nombre'}}]}}[/JSON]. ACCIONES DISPONIBLES: [{valid_actions}]. Si no hay acción, responde solo con texto plano en español."}]},
                 "generationConfig": {
-                    "temperature": 0.2, # Bajamos temperatura para mayor precisión y menor 'rambling'
-                    "maxOutputTokens": 800,
+                    "temperature": 0.1, # Mínima temperatura para evitar divagaciones
+                    "maxOutputTokens": 1000,
                     "candidateCount": 1
                 }
             }
@@ -267,8 +267,8 @@ def run(
                 clean_text = raw_response.strip().replace("*", "-")
                 
                 # --- LIMPIEZA AGRESIVA DE PENSAMIENTOS (Modo B) ---
-                # Si hay un bloque JSON, lo aislamos primero.
-                json_match = re.search(r'(\{[\s\S]*?"steps"[\s\S]*?\})', clean_text)
+                # Si hay un bloque JSON (con o sin tags), lo aislamos primero.
+                json_match = re.search(r'(?:\[JSON\])?(\{[\s\S]*?"steps"[\s\S]*?\})(?:\[/JSON\])?', clean_text)
                 if json_match:
                     plan_text = json_match.group(1)
                     # Si hay JSON, el 'message' debería ser el texto FUERA del JSON o el campo 'message' dentro.
