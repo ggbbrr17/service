@@ -266,21 +266,31 @@ def run(
 
                 clean_text = raw_response.strip().replace("*", "-")
                 
-                # Filtro robusto para cortar el "Chain of Thought" en inglés y listas de constraints
-                # Ahora mucho más agresivo para capturar patrones de Gemini
+                # --- LIMPIEZA AGRESIVA DE PENSAMIENTOS (Modo B) ---
+                # Si hay un bloque JSON, lo aislamos primero.
+                json_match = re.search(r'(\{[\s\S]*?"steps"[\s\S]*?\})', clean_text)
+                if json_match:
+                    plan_text = json_match.group(1)
+                    # Si hay JSON, el 'message' debería ser el texto FUERA del JSON o el campo 'message' dentro.
+                    # Por ahora, dejamos que el parser se encargue de extraer el message del JSON.
+                else:
+                    plan_text = clean_text
+
+                # Filtro robusto para cortar el "Chain of Thought" en inglés
                 thought_keywords = [
                     "user question", "the user is asking", "the user wants", "constraint", 
                     "system instructions", "analyze", "i should respond", "user says", 
                     "thought process", "i will", "first, i need to", "wait, let me",
                     "action 1:", "step 1:", "i am an ai model", "i do not have direct access",
-                    "option a:", "option b:", "simulated/roleplay", "show the commands"
+                    "option a:", "option b:", "simulated/roleplay", "show the commands",
+                    "scenario a", "scenario b", "drafting the response", "self-correction", "better approach"
                 ]
                 
                 if any(kw in clean_text.lower() for kw in thought_keywords):
                     lines = clean_text.split('\n')
                     final_lines = []
-                    # Leer desde abajo hacia arriba para capturar solo la respuesta final o el JSON
-                    # Detenemos la limpieza si encontramos un bloque JSON claro
+                    # Leer desde abajo hacia arriba para capturar solo la respuesta final
+                    # Detenemos si encontramos un keyword de pensamiento
                     for line in reversed(lines):
                         ls = line.strip().lower()
                         if any(stop in ls for stop in thought_keywords) and "{" not in line and "}" not in line:
@@ -289,11 +299,15 @@ def run(
                     if final_lines:
                         clean_text = "\n".join(final_lines).strip()
                 
-                # Eliminar explicaciones de IA si se colaron al final o al principio
-                clean_text = re.sub(r'(As an AI|I am a large language model).*?\.', '', clean_text, flags=re.IGNORECASE | re.DOTALL).strip()
+                # Eliminar explicaciones de IA persistentes
+                clean_text = re.sub(r'(As an AI|I am a large language model|I am an AI).*?(\.|\n|$)', '', clean_text, flags=re.IGNORECASE | re.DOTALL).strip()
                 
+                # Si después de limpiar el plan_text sigue siendo el raw, aplicamos la limpieza también al plan_text
+                # pero solo si no es un JSON válido.
+                if not json_match:
+                    plan_text = clean_text
+
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Nativa):\n{clean_text}")
-                plan_text = clean_text # Para que el motor lo procese si hay JSON
             else:
                 clean_text = f"ERROR_DIRECT_API: {response.status_code}"
                 plan_text = clean_text
@@ -305,14 +319,17 @@ def run(
             print(f"⚠️ [CERO ABSOLUTO] Error de conexión: {e}")
 
         # En Modo B, si no hay JSON, retornamos directo. Si hay, dejamos que el motor lo parsee.
-        if "{\"steps\":" not in plan_text and "[{\"action\":" not in plan_text:
+        # Detección mejorada de JSON en el plan_text
+        has_json = "{\"steps\":" in plan_text or "[{\"action\":" in plan_text or '"steps":' in plan_text
+        
+        if not has_json:
             return {
                 "question": question,
                 "message": clean_text.strip(),
                 "metacognition": "", # Cero interferencia mental
                 "active_model": "gemma-4-raw-bypass"
             }
-        # Si hay JSON, plan_text ya está seteado y el código seguirá abajo.
+        # Si hay JSON, plan_text ya está seteado (y posiblemente aislado) y el código seguirá abajo.
         active_model = "gemma-4-raw-bypass"
 
     # 3. LÓGICA NORMAL DE GLYPH (Solo si NO estamos en Modo B)
