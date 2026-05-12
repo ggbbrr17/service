@@ -235,9 +235,9 @@ def run(
             valid_actions = "search, read_url, background_research, read_file, list_files, write_file, modify_file, analyze_dataset, update_heartbeat, code_memory_synthesis, neural_memory_synthesis, wait, close_agent, restart_agent, git_sync, update_app_icon, check_git_status"
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": f"Eres un asistente virtual eficiente. Responde directa y exclusivamente en español. No incluyas procesos de pensamiento. Si necesitas realizar una acción, usa este formato JSON: {{\"steps\": [{{'action': 'nombre_accion', 'arg': 'valor'}}]}}. ACCIONES DISPONIBLES: [{valid_actions}]. Si no hay acción, responde solo con texto plano."}]},
+                "system_instruction": {"parts": [{"text": f"Eres un asistente virtual eficiente. Responde directa y exclusivamente en ESPAÑOL. PROHIBIDO incluir procesos de pensamiento, razonamiento en inglés o análisis internos en la respuesta final. Si necesitas realizar una acción técnica, responde ÚNICAMENTE con el bloque JSON siguiendo este formato: {{\"steps\": [{{'action': 'nombre_accion', 'arg': 'valor'}}]}}. No añadidas texto antes ni después del JSON si vas a ejecutar una acción. ACCIONES DISPONIBLES: [{valid_actions}]. Si no hay acción, responde solo con texto plano en español."}]},
                 "generationConfig": {
-                    "temperature": 0.5, # Temperatura estándar para interacciones nativas
+                    "temperature": 0.2, # Bajamos temperatura para mayor precisión y menor 'rambling'
                     "maxOutputTokens": 800,
                     "candidateCount": 1
                 }
@@ -267,20 +267,30 @@ def run(
                 clean_text = raw_response.strip().replace("*", "-")
                 
                 # Filtro robusto para cortar el "Chain of Thought" en inglés y listas de constraints
-                if any(kw in clean_text.lower() for kw in ["user question", "the user is asking", "constraint", "system instructions", "analyze", "i should respond", "user says", "thought process"]):
+                # Ahora mucho más agresivo para capturar patrones de Gemini
+                thought_keywords = [
+                    "user question", "the user is asking", "the user wants", "constraint", 
+                    "system instructions", "analyze", "i should respond", "user says", 
+                    "thought process", "i will", "first, i need to", "wait, let me",
+                    "action 1:", "step 1:", "i am an ai model", "i do not have direct access",
+                    "option a:", "option b:", "simulated/roleplay", "show the commands"
+                ]
+                
+                if any(kw in clean_text.lower() for kw in thought_keywords):
                     lines = clean_text.split('\n')
                     final_lines = []
-                    # Leer desde abajo hacia arriba para capturar solo la respuesta final
+                    # Leer desde abajo hacia arriba para capturar solo la respuesta final o el JSON
+                    # Detenemos la limpieza si encontramos un bloque JSON claro
                     for line in reversed(lines):
                         ls = line.strip().lower()
-                        if any(stop in ls for stop in ["constraint", "user question", "the user is asking", "system instruction", "i should respond", "user says", "analyze", "thought process"]):
+                        if any(stop in ls for stop in thought_keywords) and "{" not in line and "}" not in line:
                             break
                         final_lines.insert(0, line)
                     if final_lines:
                         clean_text = "\n".join(final_lines).strip()
                 
-                # Limpiar frases boilerplate pegadas al texto
-                clean_text = clean_text.replace("I am a large language model trained by Google.", "").replace("I am a large language model, trained by Google.", "").strip()
+                # Eliminar explicaciones de IA si se colaron al final o al principio
+                clean_text = re.sub(r'(As an AI|I am a large language model).*?\.', '', clean_text, flags=re.IGNORECASE | re.DOTALL).strip()
                 
                 print(f"📡 [CERO ABSOLUTO] Respuesta Final (Nativa):\n{clean_text}")
                 plan_text = clean_text # Para que el motor lo procese si hay JSON
