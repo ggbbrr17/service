@@ -185,39 +185,59 @@ def execute_step(step: dict, dry_run: bool = False):
         elif action == "git_sync":
             commit_msg = step.get("message", "Glyph Autonomous Sync")
             try:
-                # 0. Verificar si es un repositorio git y obtener rama actual
                 if not os.path.exists(".git"):
-                    return False, "Error: El directorio actual no es un repositorio Git."
+                    return False, "Error: No es un repositorio Git."
+
+                # 0. Configurar identidad git (ESENCIAL en Render/CI donde no hay config global)
+                subprocess.run(["git", "config", "--local", "user.email", "glyph@autonomous.ai"], capture_output=True, text=True)
+                subprocess.run(["git", "config", "--local", "user.name", "Glyph"], capture_output=True, text=True)
+
                 branch_res = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True)
                 branch = branch_res.stdout.strip() or "main"
 
                 # 1. Añadir todos los cambios al índice
                 subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
 
-                # 2. Commit (si no hay nada nuevo, no falla)
-                subprocess.run(["git", "commit", "-m", commit_msg], check=False, capture_output=True, text=True)
+                # 2. Commit - verificamos si realmente hubo algo que commitear
+                commit_res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
+                nothing_new = "nothing to commit" in commit_res.stdout or "nothing to commit" in commit_res.stderr
+                if commit_res.returncode != 0 and not nothing_new:
+                    print(f"⚠️ git commit falló: {commit_res.stderr}")
 
-                # 3. Push directo primero (evita el pull --rebase con cambios pendientes)
+                # 3. Push directo
                 push_res = subprocess.run(["git", "push", "-u", "origin", branch], capture_output=True, text=True)
 
-                # 4. Si el push fue rechazado por cambios remotos, hacemos pull --rebase y reintentamos
+                # 4. Si el push fue rechazado (remote tiene commits más nuevos), sincronizamos
                 if push_res.returncode != 0:
-                    pull_res = subprocess.run(
-                        ["git", "pull", "--rebase", "origin", branch],
-                        capture_output=True, text=True
-                    )
+                    print(f"⚠️ Push rechazado. Sincronizando con remoto...")
+
+                    # Guardar cualquier cambio local pendiente antes del pull
+                    stash_res = subprocess.run(["git", "stash"], capture_output=True, text=True)
+                    stashed = "Saved working directory" in stash_res.stdout
+
+                    # Actualizar desde remoto
+                    pull_res = subprocess.run(["git", "pull", "--rebase", "origin", branch], capture_output=True, text=True)
                     if pull_res.returncode != 0:
-                        return False, f"Error en pull --rebase: {pull_res.stderr}"
-                    push_res = subprocess.run(
-                        ["git", "push", "-u", "origin", branch],
-                        capture_output=True, text=True
-                    )
+                        subprocess.run(["git", "rebase", "--abort"], capture_output=True, text=True)
+                        if stashed:
+                            subprocess.run(["git", "stash", "pop"], capture_output=True, text=True)
+                        return False, f"Error al sincronizar con remoto: {pull_res.stderr}"
+
+                    # Restaurar cambios guardados si los había
+                    if stashed:
+                        subprocess.run(["git", "stash", "pop"], capture_output=True, text=True)
+                        subprocess.run(["git", "add", "."], capture_output=True, text=True)
+                        subprocess.run(["git", "commit", "-m", f"{commit_msg} (sync)", "--allow-empty"], capture_output=True, text=True)
+
+                    # Push final tras sincronizar
+                    push_res = subprocess.run(["git", "push", "-u", "origin", branch], capture_output=True, text=True)
                     if push_res.returncode != 0:
-                        return False, f"Error en push tras rebase: {push_res.stderr}"
+                        return False, f"Error en push final: {push_res.stderr}"
 
                 return True, f"✅ Sincronización con GitHub exitosa en rama '{branch}'."
             except subprocess.CalledProcessError as e:
                 return False, f"Error en Git: {e.stderr}"
+
 
         elif action == "check_git_status":
             try:
