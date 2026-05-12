@@ -41,26 +41,72 @@ def safe_parse(text: str, question: str = "") -> dict:
             print(f"[DEBUG] Parser aisló JSON de pensamientos: {text[:50]}...")
 
     data = None
+
+    # 2a. Intento directo: parsear texto completo como JSON (para Modo B con JSON limpio)
     try:
-        # 2. Búsqueda agresiva de bloques JSON { ... } o listas [ ... ]
-        # Buscamos el ÚLTIMO bloque JSON (donde suele estar la respuesta real)
-        # Usamos re.DOTALL pero con búsqueda del último '{' para evitar capturar texto de antes del JSON
-        all_blocks = re.findall(r'(\{[\s\S]*?\}|\[[\s\S]*?\])', text)
-        if all_blocks:
-            for block in reversed(all_blocks):
-                try:
-                    data = json.loads(block)
-                    if data: break
-                except:
-                    # Intento de reparación básica
+        candidate = text.strip()
+        md_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', candidate)
+        if md_match:
+            candidate = md_match.group(1).strip()
+        data = json.loads(candidate)
+        if not isinstance(data, (dict, list)):
+            data = None
+    except:
+        data = None
+
+    # 2b. Extracción con balanceo real de llaves (para JSONs anidados)
+    if not data and '"steps"' in text:
+        try:
+            steps_pos = text.find('"steps"')
+            start = text.rfind('{', 0, steps_pos)
+            if start != -1:
+                depth = 0
+                in_str = False
+                esc = False
+                for i in range(start, len(text)):
+                    c = text[i]
+                    if esc:
+                        esc = False
+                        continue
+                    if c == '\\' and in_str:
+                        esc = True
+                        continue
+                    if c == '"':
+                        in_str = not in_str
+                        continue
+                    if in_str:
+                        continue
+                    if c == '{':
+                        depth += 1
+                    elif c == '}':
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                data = json.loads(text[start:i+1])
+                            except:
+                                data = None
+                            break
+        except:
+            data = None
+
+    # 2c. Fallback: búsqueda agresiva con regex en fragmentos
+    if not data:
+        try:
+            all_blocks = re.findall(r'(\{[\s\S]*?\}|\[[\s\S]*?\])', text)
+            if all_blocks:
+                for block in reversed(all_blocks):
                     try:
-                        repaired = block.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
-                        data = json.loads(repaired)
+                        data = json.loads(block)
                         if data: break
                     except:
-                        pass
-    except:
-        pass
+                        try:
+                            repaired = block.replace('\u201c', '\"').replace('\u201d', '\"').replace('\u2018', "'").replace('\u2019', "'")
+                            data = json.loads(repaired)
+                            if data: break
+                        except:
+                            pass
+        except:
+            pass
 
     # SI FALLA TODO: Intentamos extraer campos clave mediante Regex (Para modelos rebeldes como Gemma 4)
     if not data:

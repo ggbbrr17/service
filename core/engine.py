@@ -22,6 +22,38 @@ bypass_session.mount("https://", HTTPAdapter(max_retries=_retry_strategy))
 # Bloqueo para evitar corrupción de memoria al escribir desde hilos
 memory_lock = threading.Lock()
 
+def _find_balanced_json(text: str):
+    """Extrae el primer objeto JSON completo con llaves balanceadas."""
+    steps_pos = text.find('"steps"')
+    if steps_pos == -1:
+        return None
+    start = text.rfind('{', 0, steps_pos)
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if esc:
+            esc = False
+            continue
+        if c == '\\' and in_str:
+            esc = True
+            continue
+        if c == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i+1]
+    return None
+
 def get_relevant_memories(question: str, memories: list, limit: int = 15) -> str:
     """
     Filtra las memorias más relevantes para la pregunta actual.
@@ -163,6 +195,7 @@ def run(
             "active_model": "gemma-4-transcendental"
         }
 
+    _modo_b_has_json = False  # Si Modo B ya tiene el plan_text, saltar la llamada al modelo normal
     if current_mode == "default" or current_mode == "offline":
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
         if current_mode == "offline":
@@ -267,12 +300,13 @@ def run(
                 clean_text = raw_response.strip().replace("*", "-")
                 
                 # --- LIMPIEZA AGRESIVA DE PENSAMIENTOS (Modo B) ---
-                # Si hay un bloque JSON (con o sin tags), lo aislamos primero.
-                json_match = re.search(r'(?:\[JSON\])?(\{[\s\S]*?"steps"[\s\S]*?\})(?:\[/JSON\])?', clean_text)
-                if json_match:
-                    plan_text = json_match.group(1)
-                    # Si hay JSON, el 'message' debería ser el texto FUERA del JSON o el campo 'message' dentro.
-                    # Por ahora, dejamos que el parser se encargue de extraer el message del JSON.
+                # Aislamos el JSON con balanceo real de llaves (fix para JSONs anidados)
+                tag_match = re.search(r'\[JSON\]([\s\S]*?)\[/JSON\]', clean_text)
+                if tag_match:
+                    plan_text = tag_match.group(1).strip()
+                elif '"steps"' in clean_text:
+                    balanced = _find_balanced_json(clean_text)
+                    plan_text = balanced if balanced else clean_text
                 else:
                     plan_text = clean_text
 
@@ -318,19 +352,19 @@ def run(
             plan_text = clean_text
             print(f"⚠️ [CERO ABSOLUTO] Error de conexión: {e}")
 
-        # En Modo B, si no hay JSON, retornamos directo. Si hay, dejamos que el motor lo parsee.
-        # Detección mejorada de JSON en el plan_text
-        has_json = "{\"steps\":" in plan_text or "[{\"action\":" in plan_text or '"steps":' in plan_text
-        
+        # En Modo B: si no hay JSON de pasos, retornamos directo.
+        has_json = '"steps"' in plan_text
+
         if not has_json:
             return {
                 "question": question,
                 "message": clean_text.strip(),
-                "metacognition": "", # Cero interferencia mental
+                "metacognition": "",
                 "active_model": "gemma-4-raw-bypass"
             }
-        # Si hay JSON, plan_text ya está seteado (y posiblemente aislado) y el código seguirá abajo.
+        # Modo B tiene JSON válido → saltamos la llamada al modelo normal
         active_model = "gemma-4-raw-bypass"
+        _modo_b_has_json = True
 
     # 3. LÓGICA NORMAL DE GLYPH (Solo si NO estamos en Modo B)
     # Registrar interacción si viene del usuario
@@ -360,19 +394,20 @@ def run(
         question, current_temp = apply_glyph_operator(question, history, current_temp)
         print(f"🌀 [MODO G] Pregunta transducida: {question[:100]}... (Temp: {current_temp})")
 
-    if not api_key:
-        print(f"❌ ERROR CRÍTICO: Falta GLYPH_GEMINI_API_KEY.")
-        plan_text = "ERROR_CONNECTION: config_missing (GLYPH_GEMINI_API_KEY)"
-    else:
-        print(f"🚀 Generando respuesta con {target} (Google API)...")
-        ext_res = ask_external_model(
-            question, history, context, model_name=target, 
-            api_key=api_key, api_url=api_url, temperature=current_temp,
-            image=image, video=video, audio=audio,
-            use_google_search=False
-        )
-        plan_text = ext_res.get("text", "")
-        tokens = ext_res.get("tokens", 0)
+    if not _modo_b_has_json:
+        if not api_key:
+            print(f"❌ ERROR CRÍTICO: Falta GLYPH_GEMINI_API_KEY.")
+            plan_text = "ERROR_CONNECTION: config_missing (GLYPH_GEMINI_API_KEY)"
+        else:
+            print(f"🚀 Generando respuesta con {target} (Google API)...")
+            ext_res = ask_external_model(
+                question, history, context, model_name=target,
+                api_key=api_key, api_url=api_url, temperature=current_temp,
+                image=image, video=video, audio=audio,
+                use_google_search=False
+            )
+            plan_text = ext_res.get("text", "")
+            tokens = ext_res.get("tokens", 0)
     
     # ---------------- PARSE ----------------
     # Parseamos el resultado del modelo único
