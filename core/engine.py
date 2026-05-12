@@ -113,8 +113,10 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
             if ok and s.get("action") in mutation_actions:
                 mutation_occurred = True
 
-        # AUTO-SYNC: Si hubo cambios en el sistema, sincronizamos con GitHub inmediatamente
-        if mutation_occurred:
+        # AUTO-SYNC: Solo si hubo cambios Y no hay un git_sync explícito en los pasos
+        # (evita doble ejecución que causa error "uncommitted changes during pull --rebase")
+        has_explicit_git_sync = concrete_steps and any(s.get("action") == "git_sync" for s in concrete_steps)
+        if mutation_occurred and not has_explicit_git_sync:
             print("🔄 [Auto-Sync] Detectadas modificaciones de código. Sincronizando con GitHub...")
             execute_step({"action": "git_sync", "message": f"feat: auto-sync | {question[:40]}..."})
         
