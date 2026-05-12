@@ -56,7 +56,7 @@ def load_personality():
     PERSONALITY_CACHE["last_load"] = now
     return processed
 
-def ask_model(prompt: str, model: str = "gemma2:2b", temperature: float = 0.0) -> dict:
+def ask_model(prompt: str, model: str = "gemma4:e2b", temperature: float = 0.0) -> dict:
     try:
         response = session.post(
             OLLAMA_URL,
@@ -264,7 +264,7 @@ def ask_external_model(
         print(f"❌ Fallo crítico en proveedor externo: {e}")
         return {"text": "ERROR_CONNECTION", "tokens": 0}
 
-def planner(question: str, history: str = "", context: str = "", model: str = "gemma2:2b", temperature: float = 0.0) -> dict:
+def planner(question: str, history: str = "", context: str = "", model: str = "gemma4:e2b", temperature: float = 0.0) -> dict:
     # Carga la personalidad acumulativa
     personality = load_personality()
     

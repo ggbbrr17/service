@@ -202,7 +202,7 @@ def run(
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
         if current_mode == "offline":
             print("🔌 [OFFLINE] Ejecutando vía Ollama (Gemma Local)...")
-            local_res = planner(question, history, context="", model="gemma2:2b")
+            local_res = planner(question, history, context="", model="gemma4:e2b")
             msg = local_res.get("text", "")
             if "ERROR_CONNECTION" in msg:
                 msg = "⚠️ No puedo conectar con el modelo local. Asegúrate de que Ollama esté corriendo o tu PC encendida. Escribe 'Modo Soberano' para volver a la nube."
@@ -211,7 +211,7 @@ def run(
                 "question": question,
                 "message": msg,
                 "metacognition": "Respuesta generada localmente.",
-                "active_model": "gemma-local"
+                "active_model": "gemma4-e2b-local"
             }
 
         clean_text = ""
