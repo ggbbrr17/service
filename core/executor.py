@@ -92,9 +92,9 @@ def execute_step(step: dict, dry_run: bool = False):
                 return False, f"Error listando archivos: {str(e)}"
 
         elif action == "write_file":
-            path = step.get("path")
+            path = step.get("path") or step.get("filename")
             content = step.get("content", "")
-            if not path: return False, "Falta el path del archivo"
+            if not path: return False, "Falta el path o filename del archivo"
             try:
                 # SAFE MODE ELIMINADO A PETICIÓN DEL USUARIO
                 # if os.path.exists(path):
