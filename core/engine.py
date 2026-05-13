@@ -11,6 +11,7 @@ import threading
 import sys
 import time
 from core.operators import apply_glyph_operator
+from core.wayuu_dictionary import get_full_dictionary_json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -151,7 +152,8 @@ def _handle_background_tasks(question, active_model, plan, plan_text, concrete_s
 def run(
     question: str, dry_run: bool = False, history: str = "", depth: int = 0, 
     temperature: float = 0.0, is_user: bool = False,
-    image: str = None, video: str = None, audio: str = None) -> dict:
+    image: str = None, video: str = None, audio: str = None,
+    language: str = "") -> dict:
     
     # 1. CARGA DE MEMORIA MÍNIMA PARA CHEQUEO DE MODO
     mem = load_memory()
@@ -267,10 +269,17 @@ def run(
             # Solo activamos búsqueda si no hay archivos pesados o si es una pregunta de texto puro.
             has_files = image is not None or audio is not None
             
-            valid_actions = "search, read_url, background_research, read_file, list_files, write_file, modify_file, analyze_dataset, update_heartbeat, code_memory_synthesis, neural_memory_synthesis, wait, close_agent, restart_agent, git_sync, update_app_icon, check_git_status"
+            # Configuración de idioma y diccionario
+            lang_instruction = f"Responde DIRECTA Y EXCLUSIVAMENTE en {language.upper()}." if language else "Responde directa y exclusivamente en ESPAÑOL."
+            dict_context = ""
+            if language.lower() == "wayuunaiki":
+                dict_context = f"\n\nUSA ESTE DICCIONARIO PARA TUS PALABRAS EN WAYUUNAIKI:\n{get_full_dictionary_json()}"
+                lang_instruction = "Responde ÚNICAMENTE en lengua WAYUUNAIKI pura. Prohibido usar español a menos que sea estrictamente necesario para términos técnicos inexistentes."
+
+            valid_actions = "search, read_url, background_research, read_file, list_files, write_file, modify_file, analyze_dataset, update_heartbeat, code_memory_synthesis, neural_memory_synthesis, wait, close_agent, restart_agent, git_sync, update_app_icon, check_git_status, translate_wayuu, lookup_wayuu"
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": f"Eres un asistente virtual eficiente. Responde directa y exclusivamente en ESPAÑOL. PROHIBIDO incluir procesos de pensamiento o razonamiento en inglés. Si vas a realizar una acción técnica, responde ÚNICAMENTE con el bloque JSON envuelto en etiquetas [JSON] y [/JSON]. Ejemplo: [JSON]{{\"steps\": [{{'action': 'nombre'}}]}}[/JSON]. ACCIONES DISPONIBLES: [{valid_actions}]. Si no hay acción, responde solo con texto plano en español."}]},
+                "system_instruction": {"parts": [{"text": f"Eres un asistente virtual eficiente. {lang_instruction} PROHIBIDO incluir procesos de pensamiento o razonamiento en inglés. Si vas a realizar una acción técnica, responde ÚNICAMENTE con el bloque JSON envuelto en etiquetas [JSON] y [/JSON]. Ejemplo: [JSON]{{\"steps\": [{{'action': 'nombre'}}]}}[/JSON]. ACCIONES DISPONIBLES: [{valid_actions}]. Si no hay acción, responde solo con texto plano en el idioma solicitado.{dict_context}"}]},
                 "generationConfig": {
                     "temperature": 0.1, # Mínima temperatura para evitar divagaciones
                     "maxOutputTokens": 1000,
@@ -379,7 +388,12 @@ def run(
     reglas = "\n".join(mem.get('reglas_aprendidas', []))
     introspeccion = json.dumps(mem.get('introspection_history', []), indent=2)
     
-    context = f"BASE DE DATOS:\n{datos}\n\nREGLAS APRENDIDAS:\n{reglas}\n\nHISTORIAL DE ACCIONES/INTROSPECCIÓN:\n{introspeccion}"
+    # Inyectar diccionario y reglas de idioma si es necesario
+    lang_rules = f"IDIOMA DE RESPUESTA: {language}\n" if language else "IDIOMA DE RESPUESTA: Español\n"
+    if language.lower() == "wayuunaiki":
+        lang_rules += "INSTRUCCIÓN CRÍTICA: Responde ÚNICAMENTE en Wayuunaiki. Usa el siguiente diccionario:\n" + get_full_dictionary_json() + "\n"
+
+    context = f"{lang_rules}\nBASE DE DATOS:\n{datos}\n\nREGLAS APRENDIDAS:\n{reglas}\n\nHISTORIAL DE ACCIONES/INTROSPECCIÓN:\n{introspeccion}"
     
     active_model = mem.get("active_model", "gemma4")
     

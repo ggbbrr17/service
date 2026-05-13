@@ -18,6 +18,7 @@ except ImportError:
     pd = None
 
 from core.memory import load_memory, save_memory
+import core.wayuu_dictionary as wayuu
 
 def plan_to_concrete_steps(steps):
     """Mantiene los pasos tal cual, filtrando solo lo que es core."""
@@ -329,6 +330,29 @@ def execute_step(step: dict, dry_run: bool = False):
             # En el servidor (nube), no podemos enviar el paquete directamente, 
             # pero marcamos la acción para que la App la ejecute localmente.
             return True, f"COMANDO_REMOTO: wake_on_lan|{mac if mac else 'default'}"
+
+        elif action == "translate_wayuu":
+            text = step.get("text", "")
+            if not text: return False, "Falta el texto a traducir."
+            result = wayuu.translate(text)
+            return True, f"Traducción Wayuunaiki-Español:\n{result}"
+
+        elif action == "lookup_wayuu":
+            word = step.get("word", "")
+            if not word: return False, "Falta la palabra a buscar."
+            
+            exact = wayuu.lookup(word)
+            fuzzy = wayuu.fuzzy_search(word, limit=5)
+            
+            report = f"Resultados para '{word}':\n"
+            if exact:
+                report += f"Exacto: {exact['wayuunaiki']} -> {exact['español']}\n"
+            if fuzzy:
+                report += "Relacionadas:\n" + "\n".join([f"- {r['wayuunaiki']} -> {r['español']}" for r in fuzzy])
+            if not exact and not fuzzy:
+                report += "Sin resultados."
+                
+            return True, report
 
         else:
             return False, f"Acción '{action}' deshabilitada o desconocida."

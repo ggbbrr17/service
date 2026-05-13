@@ -207,7 +207,7 @@ def normalize_steps(steps, question=""):
         "find_file", "get_latest_download", "run_app", "update_heartbeat",
         "setup_push", "check_git_status", "update_app_icon", "close_agent", "restart_agent", "analyze_dataset", "smart_click", "wait", "read_screen_text", "wake_on_lan",
         "neural_memory_synthesis", "trigger_cmd", "launch_gui", "say", "connect_dependency",
-        "write_file", "modify_file", "git_sync"
+        "write_file", "modify_file", "git_sync", "translate_wayuu", "lookup_wayuu"
     ]
 
     normalized = []

@@ -89,11 +89,14 @@ def ask():
 
     history = data.get("history", "")
     
+    language = data.get("language", "")
+    
     # --- MODO NUBE (Motor local en Render) ---
     res = run(
         question, dry_run=dry_run, 
         history=history,
         image=image, video=video, audio=audio,
+        language=language,
         is_user=True
     )
     
