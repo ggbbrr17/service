@@ -247,7 +247,7 @@ def normalize_steps(steps, question=""):
                 continue
                 
             # Normalización de parámetros para archivos
-            if s["action"] in ["read_file", "write_plugin"]:
+            if s["action"] in ["read_file", "write_file", "modify_file", "write_plugin"]:
                 if "path" not in s and "file" in s: s["path"] = s["file"]
                 if "path" not in s and "filename" in s: s["path"] = s["filename"]
                 if "path" not in s and "file_path" in s: s["path"] = s["file_path"]
