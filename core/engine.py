@@ -218,7 +218,10 @@ def run(
 
         clean_text = ""
         target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
-        if audio: target = "gemini-2.5-flash" # Actualizado a la versión estable actual para audio
+        if audio: 
+            target = "gemini-2.0-flash" # Actualizado a versión con soporte de audio
+        elif image:
+            target = "gemini-1.5-pro" # Forzar modelo multimodal cuando hay imagen
         
         api_key = os.getenv("GLYPH_GEMINI_API_KEY")
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
@@ -399,6 +402,10 @@ def run(
     
     # ÚNICO MODELO: Forzamos gemma4 ignorando cualquier otra configuración
     target = os.getenv("GLYPH_GEMINI_MODEL", "gemma-4-31b-it")
+    if audio:
+        target = "gemini-2.0-flash"
+    elif image:
+        target = "gemini-1.5-pro" # Forzar modelo multimodal para visión
     api_key = os.getenv("GLYPH_GEMINI_API_KEY")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target}:generateContent"
 
