@@ -161,8 +161,9 @@ def run(
     current_mode = mem["datos"].get("system_mode", "sovereign")
 
     # 2. BYPASS ABSOLUTO (Modo B) - Antes de cargar cualquier archivo o contexto
-    q_clean = question.lower().strip()
-    if q_clean == "modo b":
+    # Usamos búsqueda flexible para detectar comandos incluso dentro de bloques de texto (Modo Tutor/Expert)
+    q_lower = question.lower()
+    if re.search(r'\bmodo b\b', q_lower):
         with memory_lock:
             mem["datos"]["system_mode"] = "default"
             save_memory(mem)
@@ -171,7 +172,7 @@ def run(
             "metacognition": "",
             "active_model": "gemma-4-direct"
         }
-    elif q_clean == "modo soberano":
+    elif re.search(r'\bmodo soberano\b', q_lower):
         with memory_lock:
             mem["datos"]["system_mode"] = "sovereign"
             save_memory(mem)
@@ -180,7 +181,7 @@ def run(
             "metacognition": "",
             "active_model": "gemma-4-sovereign"
         }
-    elif q_clean == "modo offline":
+    elif re.search(r'\bmodo offline\b', q_lower):
         with memory_lock:
             mem["datos"]["system_mode"] = "offline"
             save_memory(mem)
@@ -189,7 +190,7 @@ def run(
             "metacognition": "Cambio a red neuronal local detectado.",
             "active_model": "gemma-2b-local"
         }
-    elif q_clean == "modo g" or q_clean == "modo trascendental":
+    elif re.search(r'\bmodo trascendental\b', q_lower) or re.search(r'\bmodo g\b', q_lower):
         with memory_lock:
             mem["datos"]["system_mode"] = "transcendental"
             save_memory(mem)
@@ -202,9 +203,17 @@ def run(
     _modo_b_has_json = False  # Si Modo B ya tiene el plan_text, saltar la llamada al modelo normal
     if current_mode == "default" or current_mode == "offline":
         # --- CERO ABSOLUTO: Conexión de Bajo Nivel (Bypass total de scripts) ---
+        # LIMPIEZA DE METADATA: Si el usuario está en Modo Tutor, extraemos solo la pregunta real
+        # para que el modelo en Modo B no se confunda con el wrapper de agricultura.
+        real_question = question
+        if "PREGUNTA:" in question:
+            match = re.search(r"PREGUNTA:\s*(.*?)(?:\n|INSTRUCCIÓN:|$)", question, re.DOTALL | re.IGNORECASE)
+            if match:
+                real_question = match.group(1).strip()
+
         if current_mode == "offline":
             print("🔌 [OFFLINE] Ejecutando vía Ollama (Gemma Local)...")
-            local_res = planner(question, history, context="", model="gemma4:e2b")
+            local_res = planner(real_question, history, context="", model="gemma4:e2b")
             msg = local_res.get("text", "")
             if "ERROR_CONNECTION" in msg:
                 msg = "⚠️ No puedo conectar con el modelo local. Asegúrate de que Ollama esté corriendo o tu PC encendida. Escribe 'Modo Soberano' para volver a la nube."
@@ -256,7 +265,7 @@ def run(
                             last_role = role
 
             # 2. Añadir el mensaje actual (Asegurando alternancia)
-            user_parts = [{"text": question}]
+            user_parts = [{"text": real_question}]
             if image:
                 user_parts.append({"inline_data": {"mime_type": "image/jpeg", "data": image}})
             if audio:
@@ -276,7 +285,8 @@ def run(
             lang_instruction = f"Responde DIRECTA Y EXCLUSIVAMENTE en {language.upper()}." if language else "Responde directa y exclusivamente en ESPAÑOL."
             dict_context = ""
             if language.lower() == "wayuunaiki":
-                dict_context = f"\n\nUSA ESTE DICCIONARIO PARA TUS PALABRAS EN WAYUUNAIKI:\n{get_full_dictionary_json()}"
+                from core.wayuu_dictionary import MEDICAL_GLOSSARY as _med
+                dict_context = f"\n\nUSA ESTE GLOSARIO PARA TUS PALABRAS EN WAYUUNAIKI:\n{json.dumps(_med, ensure_ascii=False)}"
                 lang_instruction = "Responde ÚNICAMENTE en lengua WAYUUNAIKI pura. Prohibido usar español a menos que sea estrictamente necesario para términos técnicos inexistentes."
 
             # Construir system_instruction según modo
@@ -338,13 +348,13 @@ def run(
                 payload["tools"] = [{"google_search": {}}]
 
             headers = {"x-goog-api-key": api_key}
-            response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
+            response = bypass_session.post(api_url, headers=headers, json=payload, timeout=90)
             
             # FALLBACK DE SEGURIDAD: Si falla con error 500, reintentamos sin herramientas
             if response.status_code == 500 and not has_files:
                 print("⚠️ [CERO ABSOLUTO] Detectado Error 500. Reintentando sin búsqueda nativa...")
                 payload.pop("tools", None)
-                response = bypass_session.post(api_url, headers=headers, json=payload, timeout=60)
+                response = bypass_session.post(api_url, headers=headers, json=payload, timeout=90)
 
             if response.status_code == 200:
                 data = response.json()
@@ -435,7 +445,8 @@ def run(
     # Inyectar diccionario y reglas de idioma si es necesario
     lang_rules = f"IDIOMA DE RESPUESTA: {language}\n" if language else "IDIOMA DE RESPUESTA: Español\n"
     if language.lower() == "wayuunaiki":
-        lang_rules += "INSTRUCCIÓN CRÍTICA: Responde ÚNICAMENTE en Wayuunaiki. Usa el siguiente diccionario:\n" + get_full_dictionary_json() + "\n"
+        from core.wayuu_dictionary import MEDICAL_GLOSSARY as _med
+        lang_rules += "INSTRUCCIÓN CRÍTICA: Responde ÚNICAMENTE en Wayuunaiki. Usa el siguiente glosario:\n" + json.dumps(_med, ensure_ascii=False) + "\n"
 
     context = f"{lang_rules}\nBASE DE DATOS:\n{datos}\n\nREGLAS APRENDIDAS:\n{reglas}\n\nHISTORIAL DE ACCIONES/INTROSPECCIÓN:\n{introspeccion}"
     
