@@ -129,5 +129,8 @@ def history():
 # ---------------- START ----------------
 # File moved to old/glyph_server.py
 if __name__ == "__main__":
+    from core.introspection import start_introspection
+    start_introspection() # Iniciar pensamientos autónomos
+    
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
