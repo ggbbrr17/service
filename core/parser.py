@@ -32,7 +32,7 @@ def safe_parse(text: str, question: str = "") -> dict:
     text = re.sub(r'<(thought|thinking)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
     
     # EXTRA: Si el texto contiene pensamientos en inglés típicos de Gemini, cortamos por lo sano
-    thought_markers = ["the user wants", "i should respond", "i will", "wait, i am an ai", "scenario a", "option a"]
+    thought_markers = ["the user wants", "i am an ai", "wait, i am an ai"]
     if any(m in text.lower() for m in thought_markers):
         # Buscamos si hay un JSON al final o al principio y lo intentamos aislar
         json_search = re.search(r'(\{[\s\S]*?"steps"[\s\S]*?\})', text)
